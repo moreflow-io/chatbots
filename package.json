@@ -1,0 +1,57 @@
+{
+  "name": "@moreflow/chatbots",
+  "version": "0.1.2",
+  "description": "Headless browser protocol helpers for Moreflow public chatbots.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/moreflow-io/chatbots.git"
+  },
+  "homepage": "https://github.com/moreflow-io/chatbots#readme",
+  "bugs": {
+    "url": "https://github.com/moreflow-io/chatbots/issues"
+  },
+  "keywords": [
+    "moreflow",
+    "chatbot",
+    "headless",
+    "browser",
+    "sse"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && esbuild src/index.ts --bundle --external:@moreflow/tracking --format=esm --minify --outfile=dist/index.js && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "bun run test && bun run build"
+  },
+  "dependencies": {
+    "@moreflow/tracking": "^0.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12",
+    "typescript": "^6.0.3",
+    "vitest": "^3.2.4"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
