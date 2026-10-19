@@ -149,11 +149,11 @@ describe('@moreflow/chatbots', () => {
     });
 
     expect(requests.map((request) => request.url)).toEqual([
-      'https://api.moreflow.test/api/v1/operations/chatbots.embed.getPublic',
-      'https://api.moreflow.test/api/v1/operations/chatbots.embed.messages.list',
-      'https://api.moreflow.test/api/v1/operations/chatbots.embed.messages.send',
-      'https://api.moreflow.test/api/v1/operations/chatbots.embed.messageRatings.list',
-      'https://api.moreflow.test/api/v1/operations/chatbots.embed.messageRatings.set'
+      'https://api.moreflow.test/v1/operations/chatbots.embed.getPublic',
+      'https://api.moreflow.test/v1/operations/chatbots.embed.messages.list',
+      'https://api.moreflow.test/v1/operations/chatbots.embed.messages.send',
+      'https://api.moreflow.test/v1/operations/chatbots.embed.messageRatings.list',
+      'https://api.moreflow.test/v1/operations/chatbots.embed.messageRatings.set'
     ]);
     expect(requests[0]?.body).toEqual({ chatbotId, origin: 'https://customer.example' });
   });

@@ -1,12 +1,16 @@
 import { captureAcquisitionTracking, createMemoryStorage, type AcquisitionTracking, type StorageLike, type TrackingCaptureOptions } from '@moreflow/tracking';
+import { type ChatbotLeadConsentAnswer, type ChatbotLeadConsentRequest } from './consent';
+import { MoreflowChatbotError } from './errors';
 export { captureAcquisitionTracking, createMemoryStorage };
 export type { StorageLike };
+export * from './consent';
+export { isRetryableChatbotError, MoreflowChatbotError } from './errors';
 export declare const chatbotOperationIds: {
-    readonly getPublic: "chatbots.embed.getPublic";
-    readonly messagesList: "chatbots.embed.messages.list";
-    readonly messagesSend: "chatbots.embed.messages.send";
-    readonly messageRatingsList: "chatbots.embed.messageRatings.list";
-    readonly messageRatingsSet: "chatbots.embed.messageRatings.set";
+    readonly getPublic: 'chatbots.embed.getPublic';
+    readonly messagesList: 'chatbots.embed.messages.list';
+    readonly messagesSend: 'chatbots.embed.messages.send';
+    readonly messageRatingsList: 'chatbots.embed.messageRatings.list';
+    readonly messageRatingsSet: 'chatbots.embed.messageRatings.set';
 };
 export type ChatbotOperationId = (typeof chatbotOperationIds)[keyof typeof chatbotOperationIds];
 export type CanonicalChatbotRecord = Record<string, unknown>;
@@ -23,22 +27,22 @@ export declare function chatbotAccountId(value: string): ChatbotAccountId;
 /** Brand externally supplied public API client ids at the package boundary. */
 export declare function chatbotClientId(value: string): ChatbotClientId;
 declare const chatbotAcquisitionFieldMap: {
-    readonly pageUrl: "page_url";
-    readonly referrer: "referrer";
-    readonly userAgent: "user_agent";
-    readonly utmSource: "utm_source";
-    readonly utmMedium: "utm_medium";
-    readonly utmCampaign: "utm_campaign";
-    readonly utmTerm: "utm_term";
-    readonly utmContent: "utm_content";
-    readonly gclid: "gclid";
-    readonly gbraid: "gbraid";
-    readonly wbraid: "wbraid";
-    readonly ttclid: "ttclid";
-    readonly ttp: "ttp";
-    readonly fbclid: "fbclid";
-    readonly fbp: "fbp";
-    readonly fbc: "fbc";
+    readonly pageUrl: 'page_url';
+    readonly referrer: 'referrer';
+    readonly userAgent: 'user_agent';
+    readonly utmSource: 'utm_source';
+    readonly utmMedium: 'utm_medium';
+    readonly utmCampaign: 'utm_campaign';
+    readonly utmTerm: 'utm_term';
+    readonly utmContent: 'utm_content';
+    readonly gclid: 'gclid';
+    readonly gbraid: 'gbraid';
+    readonly wbraid: 'wbraid';
+    readonly ttclid: 'ttclid';
+    readonly ttp: 'ttp';
+    readonly fbclid: 'fbclid';
+    readonly fbp: 'fbp';
+    readonly fbc: 'fbc';
 };
 type ChatbotAcquisitionMetadata = {
     -readonly [ChatbotKey in keyof typeof chatbotAcquisitionFieldMap]?: AcquisitionTracking[(typeof chatbotAcquisitionFieldMap)[ChatbotKey]] | undefined;
@@ -66,6 +70,8 @@ export type ChatbotPublicConfig = CanonicalChatbotRecord & {
     funnelSettings: CanonicalChatbotRecord;
     supportSettings: CanonicalChatbotRecord;
     avatarStorageId?: string | undefined;
+    /** The lead consent purposes the chatbot asks for; empty when it asks for none. */
+    leadConsent: ChatbotLeadConsentRequest[];
 };
 export interface ChatbotPublicConfigResponse {
     chatbot: ChatbotPublicConfig;
@@ -106,22 +112,6 @@ export interface ChatbotSendResult {
     clientId?: ChatbotClientId | undefined;
     [key: string]: unknown;
 }
-export declare class MoreflowChatbotError extends Error {
-    readonly status: number | undefined;
-    readonly code: string | undefined;
-    readonly retryable: boolean;
-    readonly responseBody: unknown;
-    readonly details: unknown;
-    constructor(options: {
-        message: string;
-        status?: number | undefined;
-        code?: string | undefined;
-        retryable?: boolean | undefined;
-        responseBody?: unknown;
-        details?: unknown;
-        cause?: unknown;
-    });
-}
 /**
  * Generates the visitor ids used by the public chatbot SDK. Browsers with
  * `crypto.randomUUID` get a UUID; older or restricted contexts retain the
@@ -150,7 +140,6 @@ export declare function normalizeChatbotPublicConfig(value: unknown): ChatbotPub
  * snake-case fields to the existing camel-case chatbot operation metadata contract.
  */
 export declare function captureChatbotMetadata(options?: ChatbotMetadataCaptureOptions): ChatbotConversationMetadata;
-export declare function isRetryableChatbotError(error: unknown): boolean;
 /** Normalizes both Moreflow operation envelopes and direct operation payloads. */
 export declare function normalizeChatbotOperationPayload<T = unknown>(payload: unknown): T;
 export type ChatbotSendMessageInput = {
@@ -163,6 +152,8 @@ export type ChatbotSendMessageInput = {
     clientId?: ChatbotClientId | undefined;
     attachments?: Array<Record<string, unknown>> | undefined;
     modelOverride?: string | undefined;
+    /** The visitor's answers to `config.chatbot.leadConsent`; required purposes must be granted. */
+    consent?: ChatbotLeadConsentAnswer[] | undefined;
 };
 export interface ChatbotOperationTransport {
     call<T = unknown>(operationId: ChatbotOperationId, input: Record<string, unknown>): Promise<T>;

@@ -6,8 +6,13 @@ import {
   type TrackingCaptureOptions
 } from '@moreflow/tracking';
 
+import { type ChatbotLeadConsentAnswer, type ChatbotLeadConsentRequest, normalizeChatbotLeadConsent } from './consent';
+import { MoreflowChatbotError, operationError } from './errors';
+
 export { captureAcquisitionTracking, createMemoryStorage };
 export type { StorageLike };
+export * from './consent';
+export { isRetryableChatbotError, MoreflowChatbotError } from './errors';
 
 export const chatbotOperationIds = {
   getPublic: 'chatbots.embed.getPublic',
@@ -90,6 +95,8 @@ export type ChatbotPublicConfig = CanonicalChatbotRecord & {
   funnelSettings: CanonicalChatbotRecord;
   supportSettings: CanonicalChatbotRecord;
   avatarStorageId?: string | undefined;
+  /** The lead consent purposes the chatbot asks for; empty when it asks for none. */
+  leadConsent: ChatbotLeadConsentRequest[];
 };
 
 export interface ChatbotPublicConfigResponse {
@@ -134,32 +141,6 @@ export interface ChatbotSendResult {
   clientCreated?: boolean | undefined;
   clientId?: ChatbotClientId | undefined;
   [key: string]: unknown;
-}
-
-export class MoreflowChatbotError extends Error {
-  readonly status: number | undefined;
-  readonly code: string | undefined;
-  readonly retryable: boolean;
-  readonly responseBody: unknown;
-  readonly details: unknown;
-
-  constructor(options: {
-    message: string;
-    status?: number | undefined;
-    code?: string | undefined;
-    retryable?: boolean | undefined;
-    responseBody?: unknown;
-    details?: unknown;
-    cause?: unknown;
-  }) {
-    super(options.message, { cause: options.cause });
-    this.name = 'MoreflowChatbotError';
-    this.status = options.status;
-    this.code = options.code;
-    this.retryable = options.retryable ?? false;
-    this.responseBody = options.responseBody;
-    this.details = options.details;
-  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -317,7 +298,8 @@ export function normalizeChatbotConfig(value: unknown): ChatbotPublicConfig {
     leadFields,
     funnelSettings,
     supportSettings,
-    ...(avatarStorageId ? { avatarStorageId } : {})
+    ...(avatarStorageId ? { avatarStorageId } : {}),
+    leadConsent: normalizeChatbotLeadConsent(record.leadConsent)
   };
 }
 
@@ -394,51 +376,6 @@ export function captureChatbotMetadata(
   });
 }
 
-function retryableStatus(status: number | undefined): boolean {
-  return (
-    status === 408 || status === 425 || status === 429 || (status !== undefined && status >= 500)
-  );
-}
-
-export function isRetryableChatbotError(error: unknown): boolean {
-  return error instanceof MoreflowChatbotError && error.retryable;
-}
-
-function errorFields(payload: unknown): {
-  code?: string | undefined;
-  message?: string | undefined;
-  details?: unknown;
-} {
-  const record = isRecord(payload) ? payload : undefined;
-  const error = record && isRecord(record.error) ? record.error : record;
-  return {
-    ...(stringValue(error?.code) ? { code: stringValue(error?.code) } : {}),
-    ...(stringValue(error?.message) ? { message: stringValue(error?.message) } : {}),
-    ...(error?.details !== undefined ? { details: error.details } : {})
-  };
-}
-
-function operationError(options: {
-  responseBody: unknown;
-  status?: number | undefined;
-  cause?: unknown;
-}): MoreflowChatbotError {
-  const fields = errorFields(options.responseBody);
-  return new MoreflowChatbotError({
-    message:
-      fields.message ??
-      (options.status
-        ? `Operation request failed with status ${options.status}.`
-        : 'Operation request failed.'),
-    ...(options.status !== undefined ? { status: options.status } : {}),
-    ...(fields.code ? { code: fields.code } : {}),
-    retryable: retryableStatus(options.status),
-    responseBody: options.responseBody,
-    ...(fields.details !== undefined ? { details: fields.details } : {}),
-    ...(options.cause !== undefined ? { cause: options.cause } : {})
-  });
-}
-
 async function readResponseBody(response: Response): Promise<unknown> {
   const text = await response.text();
   if (!text) return undefined;
@@ -490,6 +427,8 @@ export type ChatbotSendMessageInput = {
   clientId?: ChatbotClientId | undefined;
   attachments?: Array<Record<string, unknown>> | undefined;
   modelOverride?: string | undefined;
+  /** The visitor's answers to `config.chatbot.leadConsent`; required purposes must be granted. */
+  consent?: ChatbotLeadConsentAnswer[] | undefined;
 };
 
 export interface ChatbotOperationTransport {
@@ -674,7 +613,7 @@ export function createChatbotOperationTransport(
   ): Promise<T> {
     let response: Response;
     try {
-      response = await fetchImpl(`${apiBaseUrl}/api/v1/operations/${operationId}`, {
+      response = await fetchImpl(`${apiBaseUrl}/v1/operations/${operationId}`, {
         method: 'POST',
         mode: 'cors',
         credentials: 'omit',
@@ -720,7 +659,7 @@ export function createChatbotOperationTransport(
       let response: Response;
       try {
         response = await fetchImpl(
-          `${apiBaseUrl}/api/v1/chatbots/${encodeURIComponent(input.chatbotId)}/messages/stream`,
+          `${apiBaseUrl}/v1/chatbots/${encodeURIComponent(input.chatbotId)}/messages/stream`,
           {
             method: 'POST',
             mode: 'cors',

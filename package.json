@@ -1,6 +1,6 @@
 {
   "name": "@moreflow/chatbots",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Headless browser protocol helpers for Moreflow public chatbots.",
   "license": "MIT",
   "repository": {
@@ -38,8 +38,8 @@
     }
   },
   "scripts": {
-    "build": "rm -rf dist && esbuild src/index.ts --bundle --external:@moreflow/tracking --format=esm --minify --outfile=dist/index.js && tsc -p tsconfig.build.json",
-    "typecheck": "tsc --noEmit",
+    "build": "rm -rf dist && esbuild src/index.ts --bundle --external:@moreflow/tracking --format=esm --minify --outfile=dist/index.js && tsc --singleThreaded -p tsconfig.build.json",
+    "typecheck": "tsc --singleThreaded --noEmit",
     "test": "vitest run",
     "prepublishOnly": "bun run test && bun run build"
   },
@@ -48,8 +48,8 @@
   },
   "devDependencies": {
     "esbuild": "^0.25.12",
-    "typescript": "^6.0.3",
-    "vitest": "^3.2.4"
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
   },
   "publishConfig": {
     "access": "public"
