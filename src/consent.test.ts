@@ -89,7 +89,7 @@ describe('lead consent', () => {
       chatbotId,
       storage: createMemoryStorage(),
       randomId: () => 'visitor-1',
-      metadataCapture: () => ({}),
+      trackingCapture: () => ({}),
       fetchImpl: async (_url, init) => {
         bodies.push(JSON.parse(String(init?.body)));
         return responses.shift()!;

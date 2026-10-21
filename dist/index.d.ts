@@ -1,10 +1,24 @@
-import { captureAcquisitionTracking, createMemoryStorage, type AcquisitionTracking, type StorageLike, type TrackingCaptureOptions } from '@moreflow/tracking';
-import { type ChatbotLeadConsentAnswer, type ChatbotLeadConsentRequest } from './consent';
-import { MoreflowChatbotError } from './errors';
-export { captureAcquisitionTracking, createMemoryStorage };
-export type { StorageLike };
+import { type AcquisitionTracking, type AcquisitionTrackingConfig, captureAcquisitionTracking, clearAcquisitionTracking, configureAcquisitionTracking, createMemoryStorage, type StorageLike, type TrackingCaptureOptions } from '@moreflow/tracking';
+import type { ChatbotLeadConsentAnswer } from './consent';
+import type { ChatbotMessageRating, ChatbotMessagesPage, ChatbotPublicConfig, ChatbotPublicConfigResponse, ChatbotSendResult } from './public-types';
+export { normalizeChatbotConfig, normalizeChatbotPublicConfig } from './config';
+export type { ChatbotErrorDescription, DescribeChatbotErrorOptions } from './error-messages';
+export { describeChatbotError } from './error-messages';
+export * from './public-types';
+export { createChatbotSession } from './session';
+export * from './session-types';
+import { type AcquisitionTrackingSetting } from './internal/acquisition-tracking';
+import { type BaseUrlOptions } from './internal/http';
+import { type ChatbotStreamEvent } from './stream';
 export * from './consent';
-export { isRetryableChatbotError, MoreflowChatbotError } from './errors';
+export type { ChatbotErrorCode, MoreflowClientErrorCode, MoreflowErrorRecovery } from './errors';
+export { chatbotStreamErrorCodes, isRetryableChatbotError, MoreflowChatbotError } from './errors';
+export { isMoreflowError } from './internal/errors';
+export type { ChatbotIdentity } from './identity';
+export { chatbotThreadStorageKey, chatbotVisitorStorageKey, createChatbotIdentity, createChatbotRandomId } from './identity';
+export type { ChatbotStreamEvent } from './stream';
+export type { AcquisitionTrackingConfig, AcquisitionTrackingSetting, StorageLike };
+export { captureAcquisitionTracking, clearAcquisitionTracking, configureAcquisitionTracking, createMemoryStorage };
 export declare const chatbotOperationIds: {
     readonly getPublic: 'chatbots.embed.getPublic';
     readonly messagesList: 'chatbots.embed.messages.list';
@@ -58,83 +72,6 @@ export interface ChatbotMetadataCaptureOptions extends TrackingCaptureOptions {
     screenWidth?: number | undefined;
     screenHeight?: number | undefined;
 }
-export type ChatbotPublicConfig = CanonicalChatbotRecord & {
-    id: string;
-    name: string;
-    mode: string;
-    accountId?: ChatbotAccountId | undefined;
-    description?: string | undefined;
-    settings: CanonicalChatbotRecord;
-    embedSettings: CanonicalChatbotRecord;
-    leadFields: CanonicalChatbotRecord[];
-    funnelSettings: CanonicalChatbotRecord;
-    supportSettings: CanonicalChatbotRecord;
-    avatarStorageId?: string | undefined;
-    /** The lead consent purposes the chatbot asks for; empty when it asks for none. */
-    leadConsent: ChatbotLeadConsentRequest[];
-};
-export interface ChatbotPublicConfigResponse {
-    chatbot: ChatbotPublicConfig;
-    trace?: Record<string, unknown> | undefined;
-}
-export interface ChatbotMessage {
-    id: string;
-    role: string;
-    text: string;
-    status?: string | undefined;
-    createdAt?: string | undefined;
-    updatedAt?: string | undefined;
-    [key: string]: unknown;
-}
-export interface ChatbotMessagesPage {
-    items: ChatbotMessage[];
-    hasMore: boolean;
-    nextCursor?: string | undefined;
-    trace?: Record<string, unknown> | undefined;
-}
-export interface ChatbotMessageRating {
-    chatbotId: string;
-    threadId: string;
-    messageId: string;
-    visitorId: string;
-    rating: 'up' | 'down' | null;
-    createdAt?: string | undefined;
-    updatedAt?: string | undefined;
-    [key: string]: unknown;
-}
-export interface ChatbotSendResult {
-    threadId?: string | undefined;
-    response?: string | undefined;
-    assistantMessageId?: string | undefined;
-    conversationId?: string | undefined;
-    success?: boolean | undefined;
-    clientCreated?: boolean | undefined;
-    clientId?: ChatbotClientId | undefined;
-    [key: string]: unknown;
-}
-/**
- * Generates the visitor ids used by the public chatbot SDK. Browsers with
- * `crypto.randomUUID` get a UUID; older or restricted contexts retain the
- * SDK's non-cryptographic fallback rather than failing chat initialization.
- */
-export declare function createChatbotRandomId(): string;
-export declare function chatbotVisitorStorageKey(chatbotId: string): string;
-export declare function chatbotThreadStorageKey(chatbotId: string, visitorId: string): string;
-export interface ChatbotIdentity {
-    chatbotId: string;
-    visitorId: string;
-    getThreadId(): string | null;
-    setThreadId(threadId: string | null | undefined): void;
-    clearThread(): void;
-}
-export declare function createChatbotIdentity(options: {
-    chatbotId: string;
-    storage?: StorageLike | undefined;
-    randomId?: (() => string) | undefined;
-}): ChatbotIdentity;
-/** Converts public API records to one camel-case representation with camel-case precedence. */
-export declare function normalizeChatbotConfig(value: unknown): ChatbotPublicConfig;
-export declare function normalizeChatbotPublicConfig(value: unknown): ChatbotPublicConfigResponse;
 /**
  * Reuses @moreflow/tracking's persisted acquisition capture and maps its
  * snake-case fields to the existing camel-case chatbot operation metadata contract.
@@ -147,25 +84,30 @@ export type ChatbotSendMessageInput = {
     visitorId?: string | undefined;
     threadId?: string | undefined;
     message: string;
+    /** Reuse this id when retrying the same logical message. */
+    clientMessageId?: string | undefined;
     metadata?: ChatbotConversationMetadata | undefined;
     collectedData?: Record<string, unknown> | Array<Record<string, unknown>> | undefined;
-    clientId?: ChatbotClientId | undefined;
     attachments?: Array<Record<string, unknown>> | undefined;
     modelOverride?: string | undefined;
     /** The visitor's answers to `config.chatbot.leadConsent`; required purposes must be granted. */
     consent?: ChatbotLeadConsentAnswer[] | undefined;
 };
+export interface ChatbotRequestOptions {
+    /** Cancels the request; a stream stops and its response body is released. */
+    signal?: AbortSignal | undefined;
+}
 export interface ChatbotOperationTransport {
-    call<T = unknown>(operationId: ChatbotOperationId, input: Record<string, unknown>): Promise<T>;
-    getPublic(chatbotId: string): Promise<ChatbotPublicConfigResponse>;
+    call<T = unknown>(operationId: ChatbotOperationId, input: Record<string, unknown>, options?: ChatbotRequestOptions | undefined): Promise<T>;
+    getPublic(chatbotId: string, options?: ChatbotRequestOptions): Promise<ChatbotPublicConfigResponse>;
     listMessages(input: {
         chatbotId: string;
         visitorId: string;
         threadId: string;
         cursor?: string | undefined;
         limit?: number | undefined;
-    }): Promise<ChatbotMessagesPage>;
-    sendMessage(input: ChatbotSendMessageInput): Promise<ChatbotSendResult>;
+    }, options?: ChatbotRequestOptions): Promise<ChatbotMessagesPage>;
+    sendMessage(input: ChatbotSendMessageInput, options?: ChatbotRequestOptions | undefined): Promise<ChatbotSendResult>;
     listMessageRatings(input: {
         chatbotId: string;
         visitorId: string;
@@ -184,46 +126,40 @@ export interface ChatbotOperationTransport {
         rating: ChatbotMessageRating;
         trace?: Record<string, unknown> | undefined;
     }>;
-    streamMessage(input: ChatbotSendMessageInput): AsyncIterable<ChatbotStreamEvent>;
+    streamMessage(input: ChatbotSendMessageInput, options?: ChatbotRequestOptions | undefined): AsyncIterable<ChatbotStreamEvent>;
 }
-export interface CreateChatbotOperationTransportOptions {
-    apiBaseUrl?: string | undefined;
+export interface CreateChatbotOperationTransportOptions extends BaseUrlOptions {
     fetchImpl?: typeof fetch | undefined;
+    /**
+     * @deprecated Ignored. The API checks the chatbot's allowed domains against the
+     * request's `Origin` (or `Referer`) header, which the browser sets; a value in
+     * the body was always overwritten.
+     */
     origin?: string | undefined;
 }
-export type ChatbotStreamEvent = {
-    type: 'message.start';
-    data: Record<string, unknown>;
-} | {
-    type: 'message.delta';
-    delta: string;
-    data: Record<string, unknown>;
-} | {
-    type: 'message.complete';
-    result: ChatbotSendResult;
-    data: Record<string, unknown>;
-} | {
-    type: 'message.error';
-    error: MoreflowChatbotError;
-    data: Record<string, unknown>;
-};
 export declare function createChatbotOperationTransport(options?: CreateChatbotOperationTransportOptions): ChatbotOperationTransport;
 export interface ChatbotClient {
     readonly chatbotId: string;
+    /** Stored on the first send; changes after `forgetVisitor()`. */
     readonly visitorId: string;
     getThreadId(): string | null;
-    getConfig(): Promise<ChatbotPublicConfigResponse>;
+    getConfig(options?: ChatbotRequestOptions): Promise<ChatbotPublicConfigResponse>;
+    loadConfig(options?: ChatbotRequestOptions): Promise<ChatbotPublicConfig>;
     listMessages(options?: {
         threadId?: string | undefined;
         cursor?: string | undefined;
         limit?: number | undefined;
-    }): Promise<ChatbotMessagesPage | null>;
+    }, requestOptions?: ChatbotRequestOptions): Promise<ChatbotMessagesPage | null>;
     send(options: Omit<ChatbotSendMessageInput, 'chatbotId' | 'visitorId' | 'threadId'> & {
         threadId?: string | undefined;
-    }): Promise<ChatbotSendResult>;
+    }, requestOptions?: ChatbotRequestOptions | undefined): Promise<ChatbotSendResult>;
+    /**
+     * Yields events until `message.complete` or `message.error`. A stream that ends without
+     * either throws a `STREAM_INCOMPLETE` error; an aborted `signal` throws `ABORTED`.
+     */
     sendStream(options: Omit<ChatbotSendMessageInput, 'chatbotId' | 'visitorId' | 'threadId'> & {
         threadId?: string | undefined;
-    }): AsyncIterable<ChatbotStreamEvent>;
+    }, requestOptions?: ChatbotRequestOptions | undefined): AsyncIterable<ChatbotStreamEvent>;
     listMessageRatings(options?: {
         threadId?: string | undefined;
     }): Promise<{
@@ -239,12 +175,30 @@ export interface ChatbotClient {
         trace?: Record<string, unknown> | undefined;
     }>;
     clearThread(): void;
+    /**
+     * Same as `clearThread()`: the next message starts a new thread. `clearThread()`,
+     * `reset()` and `forgetVisitor()` abort sends still in flight (they reject with code
+     * `ABORTED`), and a reply that arrives anyway never brings the old thread back.
+     */
     reset(): void;
+    /**
+     * Removes the stored visitor and thread ids from storage and continues as a new
+     * visitor, whose id is stored again only when it sends a message.
+     */
+    forgetVisitor(): void;
 }
 export interface CreateChatbotClientOptions extends CreateChatbotOperationTransportOptions {
     chatbotId: string;
     storage?: StorageLike | undefined;
     randomId?: (() => string) | undefined;
-    metadataCapture?: (() => ChatbotConversationMetadata) | undefined;
+    /**
+     * Attaches acquisition metadata (UTM parameters, ad click ids, Meta's `_fbp`/`_fbc`
+     * cookies, referrer, page URL, device) to every send. Off by default because the
+     * capture reads cookies and writes browser storage, which needs consent in the EU.
+     */
+    acquisitionTracking?: AcquisitionTrackingSetting | undefined;
+    /** Capture options or a replacement callback; used only while `acquisitionTracking` is on.
+     * Unset options follow `configureAcquisitionTracking()`. */
+    trackingCapture?: ChatbotMetadataCaptureOptions | (() => ChatbotConversationMetadata | undefined) | undefined;
 }
 export declare function createChatbotClient(options: CreateChatbotClientOptions): ChatbotClient;

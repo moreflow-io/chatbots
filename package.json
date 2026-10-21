@@ -1,7 +1,7 @@
 {
   "name": "@moreflow/chatbots",
-  "version": "0.2.0",
-  "description": "Headless browser protocol helpers for Moreflow public chatbots.",
+  "version": "0.3.0",
+  "description": "Headless public-chatbot helpers, a chatbot session store and an optional React hook.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -16,7 +16,8 @@
     "chatbot",
     "headless",
     "browser",
-    "sse"
+    "sse",
+    "react"
   ],
   "engines": {
     "node": ">=18"
@@ -31,27 +32,50 @@
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "jsdelivr": "./dist/browser.js",
+  "unpkg": "./dist/browser.js",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    }
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js"
+    },
+    "./browser": "./dist/browser.js",
+    "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "rm -rf dist && esbuild src/index.ts --bundle --external:@moreflow/tracking --format=esm --minify --outfile=dist/index.js && tsc --singleThreaded -p tsconfig.build.json",
+    "build": "rm -rf dist && esbuild src/index.ts src/react.ts --bundle --splitting --external:@moreflow/tracking --external:react --format=esm --minify --outdir=dist --chunk-names=chunks/[name]-[hash] && esbuild src/index.ts --bundle --format=iife --global-name=MoreflowChatbots --target=es2019 --minify --outfile=dist/browser.js && tsc --singleThreaded -p tsconfig.build.json",
     "typecheck": "tsc --singleThreaded --noEmit",
     "test": "vitest run",
-    "prepublishOnly": "bun run test && bun run build"
+    "prepublishOnly": "bun run build && bun run test"
   },
   "dependencies": {
-    "@moreflow/tracking": "^0.1.0"
+    "@moreflow/tracking": "^0.2.0"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.15.2",
+    "@types/react": "19.2.13",
+    "@types/react-dom": "19.2.3",
     "esbuild": "^0.25.12",
+    "jsdom": "^29.1.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
     "typescript": "7.0.2",
     "vitest": "4.1.11"
   },
   "publishConfig": {
     "access": "public"
+  },
+  "peerDependencies": {
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    }
   }
 }
