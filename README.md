@@ -16,14 +16,14 @@ const config = await chatbot.getConfig();
 const sent = await chatbot.send({ message: 'How can you help?' });
 ```
 
-Requests go to `https://api.moreflow.io` unless you pass `baseUrl` (for example `https://dev-api.moreflow.io`, or `''` behind a same-origin proxy).
+Requests go to `https://api.moreflow.io` unless you pass `baseUrl` (for example `https://dev-api.moreflow.io`, or `''` behind an optional same-origin proxy, see [Auth and CORS](#auth-and-cors)).
 
 ## Script tag
 
 Pages without a bundler load the browser build, which exposes the same API as `window.MoreflowChatbots`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@moreflow/chatbots@0.3.0/dist/browser.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@moreflow/chatbots@0.4.0/dist/browser.js"></script>
 <script>
   const chatbot = window.MoreflowChatbots.createChatbotClient({
     chatbotId: '00000000-0000-4000-8000-000000000001'
@@ -39,7 +39,9 @@ The chatbot API needs no API token, and the client sends no cookies (`credential
 
 The chatbot must be active. Under **Allowed Domains** in the chatbot's settings, add the domains that may embed it (`example.com` also covers `www.example.com`). While the list is empty, any site can embed the chatbot; once it has an entry, the server compares the browser's `Origin` header (or `Referer`) with it on every call. A request without either header, such as one from your own server-side proxy, is not checked against the list. A domain that is not on the list, or a chatbot that is not active, gets `NOT_FOUND`, the same answer as an unknown chatbot id.
 
-`getConfig()`, `send()`, `listMessages()` and the rating calls go to `/v1/operations/chatbots.embed.*`, which answers CORS requests from any origin. `sendStream()` posts to `/v1/chatbots/{chatbotId}/messages/stream`, which does not answer the browser's CORS preflight from other sites. On your own domain, use `send()`, or pass `baseUrl: ''` and forward `/v1/*` to `https://api.moreflow.io` from your own server.
+The browser calls `https://api.moreflow.io` directly. `getConfig()`, `send()`, `listMessages()` and the rating calls go to `/v1/operations/chatbots.embed.*`, and `sendStream()` posts to `/v1/chatbots/{chatbotId}/messages/stream`; both answer CORS requests from any site, including the browser's preflight, and the Allowed Domains check then runs on the real request. Use [`@moreflow/api`](https://github.com/moreflow-io/api#readme) only from server code; it is not for the browser.
+
+You do not need a proxy. Route these requests through your own server only when your Content Security Policy cannot list `https://api.moreflow.io`, and know what it costs. Preserving per-visitor rate limiting would require forwarding the real client IP through infrastructure Moreflow trusts. The public API currently rejects caller-supplied `CF-Connecting-IP` at Cloudflare and does not trust `X-Forwarded-For`, so all visitors share one rate limit at your server's IP. Forward the browser's `Origin` header unchanged, or the Allowed Domains check no longer protects anything: the server skips it for a request without `Origin` or `Referer`, and a proxy that sets a fixed `Origin` lets anyone who reaches it through. Never add an API token in the proxy; the public endpoints do not need one. Pass `baseUrl: ''` (or your proxy's URL) to send the requests there.
 
 ## Stored data
 
@@ -97,7 +99,7 @@ Every helper throws `MoreflowChatbotError`. Its `ChatbotErrorCode` includes `NOT
 
 ## Lead consent
 
-A chatbot can ask visitors for lead consent (marketing email, email tracking) with text the account writes itself. `getConfig()` lists those requests in `chatbot.leadConsent`, each with the `text` to show verbatim, a `wordingVersion` that identifies that text, and `required`. When a request is required, the chatbot refuses messages until the visitor grants it; only marketing email consent can be required.
+A chatbot can ask visitors for lead consent (marketing email, email tracking) with text the account writes itself. `getConfig()` lists those requests in `chatbot.leadConsent`, each with the `text` to show verbatim, a `wordingVersion` that identifies that text, and `required`. When a request is required, the chatbot refuses messages until the visitor grants it; the account can require either purpose.
 
 Render one checkbox per request and send the visitor's choices with the message:
 

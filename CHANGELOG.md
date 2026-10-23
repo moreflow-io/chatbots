@@ -4,6 +4,13 @@ All notable changes to `@moreflow/chatbots` are documented in this file.
 
 ## Unreleased
 
+## 0.4.0
+
+- The public config now carries only what a chat client renders. `settings` lists `welcomeMessage`, `language`, `metaPixelId`, `metaEventChatStarted`, `metaEventLeadCreated`, `tiktokPixelId` and `tiktokEventLeadCreated`; `embedSettings` lists `primaryColor` and `teaser`; `leadFields` entries carry `key`, `label`, `type` and `required`. The server no longer returns `accountId`, `description`, `avatarStorageId`, the embed allowlist, or any other stored setting, so `funnelSettings` and `supportSettings` are always empty objects. `ChatbotPublicSettings` and `ChatbotPublicEmbedSettings` no longer accept arbitrary keys.
+
+- Add `typesVersions` so the `@moreflow/chatbots/react` types resolve under `moduleResolution: "node"` (node10) as well as `node16` and `bundler`; before, consumers on node10 got TS2307 and had to switch to `bundler`.
+- Email tracking consent can now be required, like marketing email consent. A send without that grant is refused with `CHATBOT_CONSENT_REQUIRED`, and `chatbotLeadConsentFromError(error)` returns the email tracking request to show.
+
 ## 0.3.0
 
 - **Breaking — requires the next minor release:** replace `apiBaseUrl` with `baseUrl`; replace `trackingOptions` or `metadataCapture` with `trackingCapture`. The latter accepts built-in capture options or a callback returning conversation metadata, and always obeys `acquisitionTracking`. No old option aliases remain.

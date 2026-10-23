@@ -1,6 +1,6 @@
 {
   "name": "@moreflow/chatbots",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Headless public-chatbot helpers, a chatbot session store and an optional React hook.",
   "license": "MIT",
   "repository": {
@@ -32,6 +32,13 @@
   "main": "./dist/index.js",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "typesVersions": {
+    "*": {
+      "react": [
+        "./dist/react.d.ts"
+      ]
+    }
+  },
   "jsdelivr": "./dist/browser.js",
   "unpkg": "./dist/browser.js",
   "exports": {
