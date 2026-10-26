@@ -9,6 +9,7 @@ export type ChatbotPublicSettings = {
 };
 export type ChatbotPublicEmbedSettings = {
     primaryColor?: string | undefined;
+    widgetPosition?: ("bottom_right") | ("bottom_left") | undefined;
     teaser?: {
         enabled?: boolean | undefined;
         messages?: Array<{

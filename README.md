@@ -1,9 +1,9 @@
 # `@moreflow/chatbots`
 
-Headless browser protocol helpers for native Moreflow chatbot clients. The framework-neutral core contains no UI or styles; an optional React entry subscribes to the headless session.
+Headless browser protocol helpers for native moreflow chatbot clients. The framework-neutral core contains no UI or styles; an optional React entry subscribes to the headless session.
 
 The other public SDKs, the agent plugins, and the HTTP API are listed in the
-[Moreflow SDK overview](https://api.moreflow.io/v1/operations/docs/guide#sdks).
+[moreflow SDK overview](https://api.moreflow.io/v1/operations/docs/guide#sdks).
 
 ```ts
 import { createChatbotClient } from '@moreflow/chatbots';
@@ -23,7 +23,7 @@ Requests go to `https://api.moreflow.io` unless you pass `baseUrl` (for example 
 Pages without a bundler load the browser build, which exposes the same API as `window.MoreflowChatbots`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@moreflow/chatbots@0.4.0/dist/browser.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@moreflow/chatbots@0.4.1/dist/browser.js"></script>
 <script>
   const chatbot = window.MoreflowChatbots.createChatbotClient({
     chatbotId: '00000000-0000-4000-8000-000000000001'
@@ -41,7 +41,7 @@ The chatbot must be active. Under **Allowed Domains** in the chatbot's settings,
 
 The browser calls `https://api.moreflow.io` directly. `getConfig()`, `send()`, `listMessages()` and the rating calls go to `/v1/operations/chatbots.embed.*`, and `sendStream()` posts to `/v1/chatbots/{chatbotId}/messages/stream`; both answer CORS requests from any site, including the browser's preflight, and the Allowed Domains check then runs on the real request. Use [`@moreflow/api`](https://github.com/moreflow-io/api#readme) only from server code; it is not for the browser.
 
-You do not need a proxy. Route these requests through your own server only when your Content Security Policy cannot list `https://api.moreflow.io`, and know what it costs. Preserving per-visitor rate limiting would require forwarding the real client IP through infrastructure Moreflow trusts. The public API currently rejects caller-supplied `CF-Connecting-IP` at Cloudflare and does not trust `X-Forwarded-For`, so all visitors share one rate limit at your server's IP. Forward the browser's `Origin` header unchanged, or the Allowed Domains check no longer protects anything: the server skips it for a request without `Origin` or `Referer`, and a proxy that sets a fixed `Origin` lets anyone who reaches it through. Never add an API token in the proxy; the public endpoints do not need one. Pass `baseUrl: ''` (or your proxy's URL) to send the requests there.
+You do not need a proxy. Route these requests through your own server only when your Content Security Policy cannot list `https://api.moreflow.io`, and know what it costs. Preserving per-visitor rate limiting would require forwarding the real client IP through infrastructure moreflow trusts. The public API currently rejects caller-supplied `CF-Connecting-IP` at Cloudflare and does not trust `X-Forwarded-For`, so all visitors share one rate limit at your server's IP. Forward the browser's `Origin` header unchanged, or the Allowed Domains check no longer protects anything: the server skips it for a request without `Origin` or `Referer`, and a proxy that sets a fixed `Origin` lets anyone who reaches it through. Never add an API token in the proxy; the public endpoints do not need one. Pass `baseUrl: ''` (or your proxy's URL) to send the requests there.
 
 ## Stored data
 
@@ -124,7 +124,7 @@ if (missingRequiredChatbotLeadConsent(config.leadConsent, consent).length === 0)
 
 ## Issues and contributing
 
-Bug reports and feature requests are welcome in [this repository's issue tracker](https://github.com/moreflow-io/chatbots/issues). Development happens in the private Moreflow monorepo alongside the server contract this package mirrors; each released version is synced here, so the published source always matches the npm release.
+Bug reports and feature requests are welcome in [this repository's issue tracker](https://github.com/moreflow-io/chatbots/issues). Development happens in the private moreflow monorepo alongside the server contract this package mirrors; each released version is synced here, so the published source always matches the npm release.
 
 ## Headless session and React widget
 
@@ -136,7 +136,7 @@ The session prefers streaming and falls back to `send()` for unavailable or inte
 
 `describeChatbotError(error, { locale: 'de' | 'en', formality: 'formal' | 'informal' })` returns safe localized `message`, `code`, `retryable`, `retryAfterSeconds` and the original `cause`. HTTP `Retry-After` seconds and dates are respected in `retryAfterSeconds`; wait that long before offering another attempt.
 
-Completed sends replay for 30 days through Moreflow's shared operation idempotency store. `IDEMPOTENCY_IN_PROGRESS` means the original send is still running; the session surfaces a retryable, localized error with `retryAfterSeconds` (from HTTP or SSE details). Wait that delay before `retry(message.id)`. Known transient failures before a reply exists release their claim and reuse the persisted visitor message on retry. Provider failures that already produced a fallback reply replay that reply. A crashed request expires after the shared 10-minute pending lease into `INVALID_STATE`, rather than processing forever. If a reply was persisted before a later failure, `INVALID_STATE` points to thread history. The client retains a matching chatbot/visitor recovery pointer over JSON or SSE, so reloading can recover a first-send reply too; reconcile any remaining lead processing before sending again. These uncertain outcomes are never automatically repeated.
+Completed sends replay for 30 days through moreflow's shared operation idempotency store. `IDEMPOTENCY_IN_PROGRESS` means the original send is still running; the session surfaces a retryable, localized error with `retryAfterSeconds` (from HTTP or SSE details). Wait that delay before `retry(message.id)`. Known transient failures before a reply exists release their claim and reuse the persisted visitor message on retry. Provider failures that already produced a fallback reply replay that reply. A crashed request expires after the shared 10-minute pending lease into `INVALID_STATE`, rather than processing forever. If a reply was persisted before a later failure, `INVALID_STATE` points to thread history. The client retains a matching chatbot/visitor recovery pointer over JSON or SSE, so reloading can recover a first-send reply too; reconcile any remaining lead processing before sending again. These uncertain outcomes are never automatically repeated.
 
 Install React 18+ only when using the optional `@moreflow/chatbots/react` entry. React is excluded from the core and script-tag bundles. This MPU West-style widget keeps composer text and presentation in React; the SDK handles the chat lifecycle:
 

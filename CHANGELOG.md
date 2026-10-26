@@ -4,6 +4,10 @@ All notable changes to `@moreflow/chatbots` are documented in this file.
 
 ## Unreleased
 
+## 0.4.1
+
+- The public config types add the optional `settings.widgetPosition` (`'bottom_right' | 'bottom_left'`), which the server already returns.
+
 ## 0.4.0
 
 - The public config now carries only what a chat client renders. `settings` lists `welcomeMessage`, `language`, `metaPixelId`, `metaEventChatStarted`, `metaEventLeadCreated`, `tiktokPixelId` and `tiktokEventLeadCreated`; `embedSettings` lists `primaryColor` and `teaser`; `leadFields` entries carry `key`, `label`, `type` and `required`. The server no longer returns `accountId`, `description`, `avatarStorageId`, the embed allowlist, or any other stored setting, so `funnelSettings` and `supportSettings` are always empty objects. `ChatbotPublicSettings` and `ChatbotPublicEmbedSettings` no longer accept arbitrary keys.
@@ -34,7 +38,7 @@ All notable changes to `@moreflow/chatbots` are documented in this file.
 - A stream that ends without `message.complete` or `message.error` now throws code `STREAM_INCOMPLETE` (not retryable) instead of ending silently. `chatbotStreamErrorCodes` lists the new codes.
 - Requests no longer send the development-only `ngrok-skip-browser-warning` header.
 - Breaking: requests go to `https://api.moreflow.io` by default. Previously the client called relative URLs on the page's own origin unless `apiBaseUrl` was set. Pass `baseUrl: ''` for a same-origin proxy.
-- `baseUrl` is the only API origin option name across the Moreflow SDKs.
+- `baseUrl` is the only API origin option name across the moreflow SDKs.
 - Add a script-tag build: `dist/browser.js` (also `@moreflow/chatbots/browser`, and the package's jsDelivr/unpkg entry) exposes the API as `window.MoreflowChatbots`.
 - `MoreflowChatbotError` has the same shape as the `@moreflow/forms` and `@moreflow/meetings` errors: `code` (always set), `message`, `retryable`, typed `recovery: { operation, args }` (previously dropped), `details` (now always an object, including an operation's context), `status`, `requestId` and `responseBody`. `ChatbotErrorCode` lists the known codes.
 - A missing `chatbotId` or `fetch` and an unreadable config response throw `MoreflowChatbotError` (`VALIDATION_ERROR`, `FETCH_UNAVAILABLE`, `INVALID_RESPONSE`) instead of a plain `Error`. Failures the server marks retryable are `retryable`.
@@ -60,7 +64,7 @@ All notable changes to `@moreflow/chatbots` are documented in this file.
 
 ## 0.1.0
 
-- Initial release: headless browser protocol helpers for Moreflow public chatbots.
+- Initial release: headless browser protocol helpers for moreflow public chatbots.
 - `createChatbotClient` and `createChatbotOperationTransport` for the public chatbot operations (`chatbots.embed.getPublic`, `messages.list`, `messages.send`, `messageRatings.list`, `messageRatings.set`), including SSE message streaming and retry-aware error handling.
 - Visitor and thread identity helpers (`createChatbotIdentity`, storage-key helpers) with resilient browser storage.
 - Config and payload normalizers plus branded account and client id helpers at the package boundary.
