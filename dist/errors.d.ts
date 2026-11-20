@@ -28,7 +28,7 @@ export type ChatbotErrorCode = MoreflowClientErrorCode
 /** This clientMessageId belongs to different content; inspect history before creating a new message. */
  | 'IDEMPOTENCY_CONFLICT'
 /** A prior send's outcome cannot be confirmed; inspect history before sending again. */
- | 'INVALID_STATE' | 'INTERNAL_ERROR';
+ | 'INVALID_STATE' | 'TURNSTILE_TOKEN_REQUIRED' | 'TURNSTILE_TOKEN_INVALID' | 'TURNSTILE_ACTION_MISMATCH' | 'TURNSTILE_HOSTNAME_NOT_ALLOWED' | 'TURNSTILE_VERIFICATION_UNAVAILABLE' | 'INTERNAL_ERROR';
 /** The error every `@moreflow/chatbots` helper throws. */
 export declare class MoreflowChatbotError extends MoreflowSdkError<ChatbotErrorCode> {
     /** The server's retry delay, from Retry-After or structured operation details. */

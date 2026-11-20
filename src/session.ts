@@ -38,12 +38,19 @@ export function createChatbotSession(client: ChatbotClient, options: ChatbotSess
   function idleStatus(): 'consent' | 'ready' {
     return snapshot.consent.needed ? 'consent' : 'ready';
   }
+  /** The formality option wins; without it German copy follows the chatbot's address form. */
+  function formality(config: ChatbotPublicConfig | null = snapshot.config): 'formal' | 'informal' | undefined {
+    return options.formality ?? config?.settings.addressForm;
+  }
+  function describeError(error: unknown) {
+    return describeChatbotError(error, { locale: options.locale, formality: formality() });
+  }
   function welcome(config: ChatbotPublicConfig | null): ChatbotSessionMessage[] {
     return [{
       id: 'welcome', role: 'assistant', pending: false, failed: false,
       text: config?.settings.welcomeMessage?.trim() || (options.locale === 'en'
-        ? 'Hello! How can I help you today?' : options.formality === 'informal'
-          ? 'Hallo! Wie kann ich dir heute helfen?' : 'Hallo! Wie kann ich Ihnen heute helfen?')
+        ? 'Hello! How can I help you today?' : formality(config) === 'formal'
+          ? 'Hallo! Wie kann ich Ihnen heute helfen?' : 'Hallo! Wie kann ich dir heute helfen?')
     }];
   }
   function abort(): void {
@@ -76,7 +83,7 @@ export function createChatbotSession(client: ChatbotClient, options: ChatbotSess
           hasMore: page?.hasMore ?? false, status: idleStatus() });
       } catch (error) {
         if (startedIn !== generation) return;
-        update({ status: 'error', error: describeChatbotError(error, options) });
+        update({ status: 'error', error: describeError(error) });
       } finally {
         controllers.delete(controller);
         if (startedIn === generation) initialLoad = undefined;
@@ -151,11 +158,11 @@ export function createChatbotSession(client: ChatbotClient, options: ChatbotSess
         await recoverConsent(error, controller.signal);
         if (startedIn !== generation) return { status: 'aborted' };
         retries.delete(id);
-        update({ status: idleStatus(), error: describeChatbotError(error, options),
+        update({ status: idleStatus(), error: describeError(error),
           messages: snapshot.messages.filter((message) => message.id !== id && message.id !== replyId) });
         return { status: 'consent_required', restoreText: text };
       }
-      const described = describeChatbotError(error, options);
+      const described = describeError(error);
       update({ status: 'error', error: described, messages: snapshot.messages.filter((message) => message.id !== replyId)
         .map((message) => message.id === id ? { ...message, pending: false, failed: true, status: 'failed' } : message) });
       return { status: 'error', error: described };
@@ -200,7 +207,7 @@ export function createChatbotSession(client: ChatbotClient, options: ChatbotSess
           ...historyMessages(page?.items ?? []).filter((message) => !existing.has(message.id)), ...snapshot.messages
         ] });
       } catch (error) {
-        if (startedIn === generation) update({ error: describeChatbotError(error, options) });
+        if (startedIn === generation) update({ error: describeError(error) });
       } finally {
         controllers.delete(controller);
         if (startedIn === generation) update({ loadingMore: false });

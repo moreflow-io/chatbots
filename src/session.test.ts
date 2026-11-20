@@ -50,6 +50,25 @@ describe('createChatbotSession', () => {
     unsubscribe();
   });
 
+  it('greets in German with the address form of the chatbot unless the formality option overrides it', async () => {
+    const sessionFor = (addressForm: string | undefined, formality?: 'formal' | 'informal') => {
+      const fetchImpl = vi.fn(async (input: RequestInfo | URL) => String(input).endsWith('getPublic')
+        ? json({ chatbot: { id: 'bot', name: 'Bot', mode: 'chat', settings: addressForm ? { addressForm } : {}, leadConsent: [] } })
+        : json({ items: [], hasMore: false }));
+      const client = createChatbotClient({ chatbotId: 'bot', storage: createMemoryStorage(), fetchImpl, baseUrl: '' });
+      return createChatbotSession(client, { locale: 'de', ...(formality ? { formality } : {}) });
+    };
+    const greeting = async (session: ReturnType<typeof sessionFor>) => {
+      await session.ready;
+      return session.getSnapshot().messages[0]?.text;
+    };
+
+    expect(await greeting(sessionFor('informal'))).toBe('Hallo! Wie kann ich dir heute helfen?');
+    expect(await greeting(sessionFor('formal'))).toBe('Hallo! Wie kann ich Ihnen heute helfen?');
+    expect(await greeting(sessionFor(undefined))).toBe('Hallo! Wie kann ich Ihnen heute helfen?');
+    expect(await greeting(sessionFor('informal', 'formal'))).toBe('Hallo! Wie kann ich Ihnen heute helfen?');
+  });
+
   it('tracks tri-state decisions and attaches granted and declined consent only on the first message', async () => {
     const { session, fetchImpl } = fixture({ consent });
     await session.ready;

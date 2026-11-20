@@ -20,10 +20,14 @@ export type ChatbotPublicConfig = CanonicalChatbotRecord & {
   companyLogoUrl?: ChatbotPublicImageFields['companyLogoUrl'] | undefined;
   /** The lead consent purposes the chatbot asks for; empty when it asks for none. */
   leadConsent: ChatbotLeadConsentRequest[];
+  /** Quick reply buttons of the opener under the assigned experiment variant; absent without one. */
+  quickReplies?: string[] | undefined;
 };
 
 export interface ChatbotPublicConfigResponse {
   chatbot: ChatbotPublicConfig;
+  /** The chatbot experiment and variant the visitor is assigned to (a visitorKey was sent); null without one. */
+  experiment?: { key: string; variant: string } | null | undefined;
   trace?: Record<string, unknown> | undefined;
 }
 

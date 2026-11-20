@@ -8,9 +8,8 @@ import {
   type StorageLike,
   type TrackingCaptureOptions
 } from '@moreflow/tracking';
-import { normalizeChatbotPublicConfig } from './config';
 import type { ChatbotLeadConsentAnswer } from './consent';
-import type { ChatbotMessage, ChatbotMessageRating, ChatbotMessagesPage, ChatbotPublicConfig, ChatbotPublicConfigResponse, ChatbotSendResult } from './public-types';
+import type { ChatbotMessageRating, ChatbotMessagesPage, ChatbotPublicConfig, ChatbotPublicConfigResponse, ChatbotSendResult } from './public-types';
 
 export { normalizeChatbotConfig, normalizeChatbotPublicConfig } from './config';
 export type { ChatbotErrorDescription, DescribeChatbotErrorOptions } from './error-messages';
@@ -19,27 +18,44 @@ export * from './public-types';
 export { createChatbotSession } from './session';
 export * from './session-types';
 
-import { abortedError, MoreflowChatbotError, operationError } from './errors';
+import { MoreflowChatbotError } from './errors';
 import { createChatbotIdentity, createChatbotRandomId } from './identity';
 import {
   type AcquisitionTrackingSetting,
-  acquisitionTrackingEnabled
+  acquisitionTrackingConsented,
+  captureUrlAcquisitionTracking
 } from './internal/acquisition-tracking';
+import { validationErrorInit } from './internal/errors';
+import type { BaseUrlOptions } from './internal/http';
+import { type PageExperimentAssignment, pageExperimentAssignments } from './internal/page-experiments';
+import { pageVisitReference } from './internal/visit-reference';
 import {
-  fetchUnavailableInit,
-  networkErrorInit,
-  validationErrorInit
-} from './internal/errors';
-import {
-  type BaseUrlOptions,
-  readResponseBody,
-  resolveBaseUrl,
-  resolveFetch
-} from './internal/http';
-import { isRecord, stringValue } from './internal/values';
-import { type ChatbotStreamEvent, parseSse } from './stream';
+  chatbotExperimentFor,
+  chatbotPageVisitorKey,
+  experimentFromChatbotConfig,
+  mergeChatbotExperimentVariants,
+  rememberChatbotExperiment,
+  trackChatbotExposure
+} from './chatbot-experiments';
+import { stringValue } from './internal/values';
+import type { ChatbotStreamEvent } from './stream';
+import { chatbotOperationIds, createChatbotOperationTransport } from './operation-transport';
+export { chatbotOperationIds, createChatbotOperationTransport, normalizeChatbotOperationPayload } from './operation-transport';
+export {
+  createChatbotChallengeSession,
+  createChatbotChallengeTokenProvider,
+  isChatbotChallengeError
+} from './challenge';
+export type { ChatbotChallengeTokenProvider } from './challenge';
 
 export * from './consent';
+export type { ChatbotAdsConsentDecision, ChatbotAdsConsentMode } from './ads-consent';
+export {
+  chatbotAdsConsentMode,
+  chatbotAdsConsentStorageKey,
+  readChatbotAdsConsent,
+  storeChatbotAdsConsent
+} from './ads-consent';
 export type { ChatbotErrorCode, MoreflowClientErrorCode, MoreflowErrorRecovery } from './errors';
 export { chatbotStreamErrorCodes, isRetryableChatbotError, MoreflowChatbotError } from './errors';
 export { isMoreflowError } from './internal/errors';
@@ -58,14 +74,6 @@ export {
   configureAcquisitionTracking,
   createMemoryStorage
 };
-
-export const chatbotOperationIds = {
-  getPublic: 'chatbots.embed.getPublic',
-  messagesList: 'chatbots.embed.messages.list',
-  messagesSend: 'chatbots.embed.messages.send',
-  messageRatingsList: 'chatbots.embed.messageRatings.list',
-  messageRatingsSet: 'chatbots.embed.messageRatings.set'
-} as const;
 
 export type ChatbotOperationId = (typeof chatbotOperationIds)[keyof typeof chatbotOperationIds];
 export type CanonicalChatbotRecord = Record<string, unknown>;
@@ -99,11 +107,14 @@ const chatbotAcquisitionFieldMap = {
   utmCampaign: 'utm_campaign',
   utmTerm: 'utm_term',
   utmContent: 'utm_content',
+  utmCampaignId: 'utm_campaignid',
+  gadCampaignId: 'gad_campaignid',
   gclid: 'gclid',
   gbraid: 'gbraid',
   wbraid: 'wbraid',
   ttclid: 'ttclid',
   ttp: 'ttp',
+  oppref: 'oppref',
   fbclid: 'fbclid',
   fbp: 'fbp',
   fbc: 'fbc'
@@ -120,6 +131,12 @@ export type ChatbotConversationMetadata = ChatbotAcquisitionMetadata & {
   trafficSource?: AcquisitionTracking['utm_source'] | undefined;
   screenWidth?: number | undefined;
   screenHeight?: number | undefined;
+  /**
+   * The visitor's advertising consent. The conversation keeps the latest value a message sent, and
+   * while it is `false` the lead is reported to neither Meta, TikTok nor ChatGPT Ads. Set it with the
+   * client's `adsConsent` option rather than here.
+   */
+  adsConsent?: boolean | undefined;
 };
 
 export interface ChatbotMetadataCaptureOptions extends TrackingCaptureOptions {
@@ -162,6 +179,26 @@ function mapChatbotAcquisitionMetadata(tracking: AcquisitionTracking): ChatbotAc
   return metadata;
 }
 
+function trafficSourceMetadata(tracking: AcquisitionTracking): ChatbotConversationMetadata {
+  return tracking.utm_source || tracking.gclid
+    ? { trafficSource: tracking.utm_source ?? tracking.gclid }
+    : {};
+}
+
+/**
+ * The metadata a send carries without tracking consent: the UTM parameters and
+ * ad click ids of the page URL, read without cookies, storage or device data.
+ */
+function urlChatbotMetadata(
+  location: TrackingCaptureOptions['location']
+): ChatbotConversationMetadata | undefined {
+  const tracking = captureUrlAcquisitionTracking(location);
+  const metadata = tracking
+    ? { ...mapChatbotAcquisitionMetadata(tracking), ...trafficSourceMetadata(tracking) }
+    : {};
+  return Object.keys(metadata).length > 0 ? Object.freeze(metadata) : undefined;
+}
+
 /**
  * Reuses @moreflow/tracking's persisted acquisition capture and maps its
  * snake-case fields to the existing camel-case chatbot operation metadata contract.
@@ -188,32 +225,11 @@ export function captureChatbotMetadata(
 
   return Object.freeze({
     ...mapChatbotAcquisitionMetadata(tracking),
-    ...(tracking.utm_source || tracking.gclid
-      ? { trafficSource: tracking.utm_source ?? tracking.gclid }
-      : {}),
+    ...trafficSourceMetadata(tracking),
     ...(width !== undefined ? { deviceType: deviceTypeFor(width) } : {}),
     ...(resolvedScreenWidth !== undefined ? { screenWidth: resolvedScreenWidth } : {}),
     ...(resolvedScreenHeight !== undefined ? { screenHeight: resolvedScreenHeight } : {})
   });
-}
-
-/** Normalizes both Moreflow operation envelopes and direct operation payloads. */
-export function normalizeChatbotOperationPayload<T = unknown>(payload: unknown): T {
-  if (isRecord(payload) && payload.success === true && Object.hasOwn(payload, 'data')) {
-    return payload.data as T;
-  }
-  if (isRecord(payload) && payload.success === false) {
-    throw operationError({ responseBody: payload });
-  }
-  return payload as T;
-}
-
-function compactRecord(record: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(record).filter(
-      ([, value]) => value !== undefined && value !== null && value !== ''
-    )
-  );
 }
 
 export type ChatbotSendMessageInput = {
@@ -229,6 +245,12 @@ export type ChatbotSendMessageInput = {
   modelOverride?: string | undefined;
   /** The visitor's answers to `config.chatbot.leadConsent`; required purposes must be granted. */
   consent?: ChatbotLeadConsentAnswer[] | undefined;
+  /**
+   * The experiment variants the visitor saw. Unset, the page's assignments from the tracker's memory
+   * are sent (never stored by the SDK); `[]` sends none. Moreflow stores them with a lead this message
+   * creates only while the account allows it.
+   */
+  experimentVariants?: PageExperimentAssignment[] | undefined;
 };
 
 export interface ChatbotRequestOptions {
@@ -242,7 +264,7 @@ export interface ChatbotOperationTransport {
     input: Record<string, unknown>,
     options?: ChatbotRequestOptions | undefined
   ): Promise<T>;
-  getPublic(chatbotId: string, options?: ChatbotRequestOptions): Promise<ChatbotPublicConfigResponse>;
+  getPublic(chatbotId: string, options?: ChatbotRequestOptions, visitorKey?: string | undefined): Promise<ChatbotPublicConfigResponse>;
   listMessages(input: {
     chatbotId: string;
     visitorId: string;
@@ -274,6 +296,12 @@ export interface ChatbotOperationTransport {
 
 export interface CreateChatbotOperationTransportOptions extends BaseUrlOptions {
   fetchImpl?: typeof fetch | undefined;
+  /** Called after enforcement is discovered, for every challenged attempt. Return a fresh chatbot_message token. */
+  getChallengeToken?: import('./challenge').ChatbotChallengeTokenProvider | undefined;
+  /** Accessible title for the browser challenge iframe. */
+  challengeTitle?: string | undefined;
+  /** Owned API origin for the challenge when messages use a same-origin/custom proxy. */
+  challengeBaseUrl?: string | undefined;
   /**
    * @deprecated Ignored. The API checks the chatbot's allowed domains against the
    * request's `Origin` (or `Referer`) header, which the browser sets; a value in
@@ -282,159 +310,6 @@ export interface CreateChatbotOperationTransportOptions extends BaseUrlOptions {
   origin?: string | undefined;
 }
 
-function messageRole(value: unknown): ChatbotMessage['role'] {
-  return value === 'visitor' || value === 'agent' || value === 'system' ? value : 'assistant';
-}
-
-function asMessagesPage(value: unknown): ChatbotMessagesPage {
-  const record = isRecord(value) ? value : {};
-  const items = Array.isArray(record.items)
-    ? record.items.filter(isRecord).map((item) => ({
-        ...item,
-        id: stringValue(item.id) ?? '',
-        role: messageRole(item.role),
-        text: stringValue(item.text) ?? ''
-      }))
-    : [];
-  return {
-    items,
-    hasMore: record.hasMore === true,
-    ...(stringValue(record.nextCursor) ? { nextCursor: stringValue(record.nextCursor) } : {}),
-    ...(isRecord(record.trace) ? { trace: record.trace } : {})
-  };
-}
-
-function asSendResult(value: unknown): ChatbotSendResult {
-  return isRecord(value) ? value : {};
-}
-
-function asRatingValue(value: unknown): ChatbotMessageRating['rating'] {
-  return value === 'up' || value === 'down' ? value : null;
-}
-
-function asRatings(value: unknown): {
-  ratings: ChatbotMessageRating[];
-  trace?: Record<string, unknown> | undefined;
-} {
-  const record = isRecord(value) ? value : {};
-  const ratings = Array.isArray(record.ratings)
-    ? record.ratings.filter(isRecord).map((rating) => ({
-        ...rating,
-        chatbotId: stringValue(rating.chatbotId) ?? '',
-        threadId: stringValue(rating.threadId) ?? '',
-        messageId: stringValue(rating.messageId) ?? '',
-        visitorId: stringValue(rating.visitorId) ?? '',
-        rating: asRatingValue(rating.rating)
-      }))
-    : [];
-  return { ratings, ...(isRecord(record.trace) ? { trace: record.trace } : {}) };
-}
-
-function asRatingResult(value: unknown): {
-  rating: ChatbotMessageRating;
-  trace?: Record<string, unknown> | undefined;
-} {
-  const record = isRecord(value) ? value : {};
-  const rating = isRecord(record.rating) ? record.rating : {};
-  return {
-    rating: {
-      ...rating,
-      chatbotId: stringValue(rating.chatbotId) ?? '',
-      threadId: stringValue(rating.threadId) ?? '',
-      messageId: stringValue(rating.messageId) ?? '',
-      visitorId: stringValue(rating.visitorId) ?? '',
-      rating: asRatingValue(rating.rating)
-    },
-    ...(isRecord(record.trace) ? { trace: record.trace } : {})
-  };
-}
-
-export function createChatbotOperationTransport(
-  options: CreateChatbotOperationTransportOptions = {}
-): ChatbotOperationTransport {
-  const baseUrl = resolveBaseUrl(options);
-  const resolvedFetch = resolveFetch(options.fetchImpl);
-  if (!resolvedFetch) throw new MoreflowChatbotError(fetchUnavailableInit('@moreflow/chatbots'));
-  const fetchImpl: typeof fetch = resolvedFetch;
-
-  async function call<T = unknown>(
-    operationId: ChatbotOperationId,
-    input: Record<string, unknown>,
-    requestOptions: ChatbotRequestOptions = {}
-  ): Promise<T> {
-    const { signal } = requestOptions;
-    let response: Response;
-    try {
-      response = await fetchImpl(`${baseUrl}/v1/operations/${operationId}`, {
-        method: 'POST',
-        mode: 'cors',
-        credentials: 'omit',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(input),
-        ...(signal ? { signal } : {})
-      });
-    } catch (cause) {
-      if (signal?.aborted) throw abortedError(signal);
-      throw new MoreflowChatbotError(
-        networkErrorInit('The chatbot operation request could not reach the network.', cause)
-      );
-    }
-
-    const payload = await readResponseBody(response);
-    if (!response.ok) throw operationError({ responseBody: payload, status: response.status, retryAfter: response.headers.get('retry-after') ?? undefined });
-    return normalizeChatbotOperationPayload<T>(payload);
-  }
-
-  return {
-    call,
-    async getPublic(chatbotId, options) {
-      return normalizeChatbotPublicConfig(await call(chatbotOperationIds.getPublic, { chatbotId }, options));
-    },
-    async listMessages(input, options) {
-      return asMessagesPage(await call(chatbotOperationIds.messagesList, input, options));
-    },
-    async sendMessage(input, requestOptions) {
-      return asSendResult(
-        await call(chatbotOperationIds.messagesSend, compactRecord(input), requestOptions)
-      );
-    },
-    async listMessageRatings(input) {
-      return asRatings(await call(chatbotOperationIds.messageRatingsList, input));
-    },
-    async setMessageRating(input) {
-      return asRatingResult(await call(chatbotOperationIds.messageRatingsSet, input));
-    },
-    async *streamMessage(input, requestOptions = {}) {
-      const { signal } = requestOptions;
-      let response: Response;
-      try {
-        response = await fetchImpl(
-          `${baseUrl}/v1/chatbots/${encodeURIComponent(input.chatbotId)}/messages/stream`,
-          {
-            method: 'POST',
-            mode: 'cors',
-            credentials: 'omit',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(compactRecord(input)),
-            ...(signal ? { signal } : {})
-          }
-        );
-      } catch (cause) {
-        if (signal?.aborted) throw abortedError(signal);
-        throw new MoreflowChatbotError(
-          networkErrorInit('The chatbot streaming request could not reach the network.', cause)
-        );
-      }
-      if (!response.ok)
-        throw operationError({
-          responseBody: await readResponseBody(response),
-          status: response.status,
-          retryAfter: response.headers.get('retry-after') ?? undefined
-        });
-      yield* parseSse(response, signal);
-    }
-  };
-}
 
 export interface ChatbotClient {
   readonly chatbotId: string;
@@ -494,14 +369,26 @@ export interface CreateChatbotClientOptions extends CreateChatbotOperationTransp
   storage?: StorageLike | undefined;
   randomId?: (() => string) | undefined;
   /**
-   * Attaches acquisition metadata (UTM parameters, ad click ids, Meta's `_fbp`/`_fbc`
-   * cookies, referrer, page URL, device) to every send. Off by default because the
-   * capture reads cookies and writes browser storage, which needs consent in the EU.
+   * The visitor's tracking consent. Without consent (the default) every send
+   * carries only the UTM parameters and ad click ids of the current page URL,
+   * with no cookie or storage access. Pass `true`, or a function that returns
+   * `true` once the visitor agreed in your consent banner, to also attach ad
+   * cookies (`_fbp`, `_fbc`, `_ttp`), referrer, page URL and device, kept in
+   * browser storage.
    */
   acquisitionTracking?: AcquisitionTrackingSetting | undefined;
-  /** Capture options or a replacement callback; used only while `acquisitionTracking` is on.
-   * Unset options follow `configureAcquisitionTracking()`. */
+  /** Capture options or a replacement callback; used only with tracking consent.
+   * Unset options follow `configureAcquisitionTracking()`. Without consent only
+   * `location` is read from the options. */
   trackingCapture?: ChatbotMetadataCaptureOptions | (() => ChatbotConversationMetadata | undefined) | undefined;
+  /**
+   * The visitor's advertising consent, for a chatbot whose config has `settings.adsTracking`. When
+   * set, every send carries it as `metadata.adsConsent`: `true`, or a function returning `true` once
+   * the visitor agreed, lets Moreflow report the conversation's lead to Meta, TikTok and ChatGPT Ads;
+   * `false` (or a function returning anything else) keeps it from them. Unset sends no consent signal
+   * and the lead is reported as before. A function is asked on every send.
+   */
+  adsConsent?: AcquisitionTrackingSetting | undefined;
 }
 
 /**
@@ -580,10 +467,20 @@ export function createChatbotClient(options: CreateChatbotClientOptions): Chatbo
       throw new MoreflowChatbotError(validationErrorInit('message', 'message is required.'));
     }
     const threadId = stringValue(input.threadId) ?? identity.getThreadId() ?? undefined;
-    const metadata =
+    const capturedMetadata =
       input.metadata ??
-      (acquisitionTrackingEnabled(options.acquisitionTracking) ? trackingCapture() : undefined);
+      (acquisitionTrackingConsented(options.acquisitionTracking)
+        ? trackingCapture()
+        : urlChatbotMetadata(typeof capture === 'function' ? undefined : capture?.location));
+    const metadata =
+      options.adsConsent === undefined
+        ? capturedMetadata
+        : { ...capturedMetadata, adsConsent: acquisitionTrackingConsented(options.adsConsent) };
     identity.persistVisitor();
+    const experimentVariants =
+      input.experimentVariants ?? mergeChatbotExperimentVariants(chatbotExperimentFor(identity.chatbotId), pageExperimentAssignments());
+    // The visit the page view's pageview is linked to (docs/website-analytics.md §8.1); absent without a tracker reference.
+    const visit = pageVisitReference();
     return {
       ...input,
       chatbotId: identity.chatbotId,
@@ -591,8 +488,20 @@ export function createChatbotClient(options: CreateChatbotClientOptions): Chatbo
       ...(threadId ? { threadId } : {}),
       message,
       clientMessageId: input.clientMessageId ?? createChatbotRandomId(),
-      ...(metadata ? { metadata } : {})
+      ...(metadata ? { metadata } : {}),
+      ...(experimentVariants.length > 0 ? { experimentVariants } : {}),
+      ...(visit ? { visit } : {})
     };
+  }
+
+  // The public read sends the page view's visitor key; an assigned chatbot experiment is kept for the page
+  // view's messages and its exposure is recorded once (chatbot-experiments.ts).
+  async function readPublicConfig(requestOptions?: ChatbotRequestOptions) {
+    const response = await transport.getPublic(identity.chatbotId, requestOptions, chatbotPageVisitorKey());
+    const experiment = experimentFromChatbotConfig(response);
+    rememberChatbotExperiment(identity.chatbotId, experiment);
+    if (experiment) trackChatbotExposure(identity.chatbotId, experiment);
+    return response;
   }
 
   return {
@@ -601,8 +510,8 @@ export function createChatbotClient(options: CreateChatbotClientOptions): Chatbo
       return identity.visitorId;
     },
     getThreadId: identity.getThreadId,
-    getConfig: (requestOptions) => transport.getPublic(identity.chatbotId, requestOptions),
-    loadConfig: async (requestOptions) => (await transport.getPublic(identity.chatbotId, requestOptions)).chatbot,
+    getConfig: (requestOptions) => readPublicConfig(requestOptions),
+    loadConfig: async (requestOptions) => (await readPublicConfig(requestOptions)).chatbot,
     async listMessages(listOptions = {}, requestOptions) {
       const threadId = stringValue(listOptions.threadId) ?? identity.getThreadId();
       if (!threadId) return null;

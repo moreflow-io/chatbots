@@ -3,6 +3,7 @@ import type { describeChatbotError } from './error-messages';
 import type { ChatbotMessage, ChatbotPublicConfig, ChatbotSendResult } from './public-types';
 export interface ChatbotSessionOptions {
     locale?: 'de' | 'en' | undefined;
+    /** German form of address; defaults to the chatbot's `settings.addressForm`. */
     formality?: 'formal' | 'informal' | undefined;
     pageSize?: number | undefined;
     /** Start explicitly with start(); useful for framework effect lifecycles. */

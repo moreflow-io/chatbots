@@ -63,30 +63,75 @@ describe('@moreflow/chatbots stored visitor data', () => {
 
 describe('@moreflow/chatbots acquisitionTracking', () => {
   function stubLandingPage() {
-    vi.stubGlobal('location', { href: 'https://example.test/?utm_source=google', search: '' });
-    vi.stubGlobal('document', { cookie: '_fbp=fb.1.123.456', referrer: '' });
+    vi.stubGlobal('location', {
+      href: 'https://example.test/?utm_source=google&utm_medium=cpc&utm_campaignid=123&gad_campaignid=456&gclid=g-1&fbclid=fb-1&ttclid=tt-1',
+      search: ''
+    });
+    vi.stubGlobal('document', {
+      cookie: '_fbp=fb.1.123.456; _fbc=fb.1.123.fb-1; _ttp=tt-cookie',
+      referrer: 'https://google.test/'
+    });
+    vi.stubGlobal('window', {});
     const session = createMemoryStorage();
+    const local = createMemoryStorage();
     vi.stubGlobal('sessionStorage', session);
-    return session;
+    vi.stubGlobal('localStorage', local);
+    return { session, local };
   }
 
-  it('sends no metadata and reads no cookies by default', async () => {
-    const session = stubLandingPage();
+  const urlMetadata = {
+    utmSource: 'google',
+    utmMedium: 'cpc',
+    utmCampaignId: '123',
+    gadCampaignId: '456',
+    gclid: 'g-1',
+    fbclid: 'fb-1',
+    ttclid: 'tt-1',
+    trafficSource: 'google'
+  };
+
+  it('sends only the URL parameters and touches no cookie or storage without consent', async () => {
+    const { session, local } = stubLandingPage();
+    const cookieReads = vi.fn(() => '_fbp=fb.1.123.456');
+    vi.stubGlobal('document', { get cookie() { return cookieReads(); }, referrer: 'https://google.test/' });
+    const { client, bodies } = recordingClient();
+
+    await client.send({ message: 'Hello' });
+
+    expect(bodies[0]?.metadata).toEqual(urlMetadata);
+    expect(cookieReads).not.toHaveBeenCalled();
+    expect(session.getItem('moreflow:acquisition:v1')).toBeNull();
+    expect(local.getItem('moreflow:acquisition:v1')).toBeNull();
+  });
+
+  it('sends no metadata when the URL carries no campaign parameters', async () => {
+    stubLandingPage();
+    vi.stubGlobal('location', { href: 'https://example.test/contact', search: '' });
     const { client, bodies } = recordingClient();
 
     await client.send({ message: 'Hello' });
 
     expect(bodies[0]).not.toHaveProperty('metadata');
-    expect(session.getItem('moreflow:acquisition:v1')).toBeNull();
   });
 
-  it('captures acquisition metadata when enabled', async () => {
-    stubLandingPage();
+  it('also captures ad cookies (_fbp, _fbc, _ttp) with consent', async () => {
+    const { session, local } = stubLandingPage();
     const { client, bodies } = recordingClient({ acquisitionTracking: true });
 
     await client.send({ message: 'Hello' });
 
-    expect(bodies[0]?.metadata).toMatchObject({ utmSource: 'google', fbp: 'fb.1.123.456' });
+    expect(bodies[0]?.metadata).toMatchObject({
+      utmSource: 'google',
+      utmCampaignId: '123',
+      gadCampaignId: '456',
+      fbp: 'fb.1.123.456',
+      fbc: 'fb.1.123.fb-1',
+      ttp: 'tt-cookie',
+      referrer: 'https://google.test/'
+    });
+    // Kept across visits (moreflow-6l3y1.6), not only for the tab.
+    expect(local.getItem('moreflow:acquisition:v1')).toContain('google');
+    expect(session.getItem('moreflow:acquisition:v1')).toBeNull();
   });
 
   it('asks a consent function on every send and never calls a capture override without consent', async () => {
@@ -103,7 +148,7 @@ describe('@moreflow/chatbots acquisitionTracking', () => {
     await client.send({ message: 'After consent' });
 
     expect(trackingCapture).toHaveBeenCalledTimes(1);
-    expect(bodies[0]).not.toHaveProperty('metadata');
+    expect(bodies[0]?.metadata).toEqual(urlMetadata);
     expect(bodies[1]?.metadata).toEqual({ utmSource: 'override' });
   });
 

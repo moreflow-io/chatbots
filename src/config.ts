@@ -1,6 +1,7 @@
 import { normalizeChatbotLeadConsent } from './consent';
 import { MoreflowChatbotError } from './errors';
 import { type CanonicalChatbotRecord, chatbotAccountId } from './index';
+import { experimentFromChatbotConfig } from './chatbot-experiments';
 import { isRecord, stringValue } from './internal/values';
 import type { ChatbotPublicConfig, ChatbotPublicConfigResponse, ChatbotPublicEmbedSettings } from './public-types';
 
@@ -47,7 +48,12 @@ export function normalizeChatbotConfig(value: unknown): ChatbotPublicConfig {
   if (!isRecord(record)) throw invalidResponse('Public chatbot configuration must be an object.', value);
 
   const rawSettings = isRecord(record.settings) ? record.settings : {};
-  const settings = { ...rawSettings, welcomeMessage: typeof rawSettings.welcomeMessage === 'string' ? rawSettings.welcomeMessage : undefined };
+  const settings = {
+    ...rawSettings,
+    welcomeMessage: typeof rawSettings.welcomeMessage === 'string' ? rawSettings.welcomeMessage : undefined,
+    // A server without the field addresses visitors formally, the chatbot default.
+    addressForm: rawSettings.addressForm === 'informal' ? 'informal' as const : 'formal' as const
+  };
   const embedSettings = isRecord(record.embedSettings) ? record.embedSettings : {};
   const leadFields = Array.isArray(record.leadFields) ? record.leadFields.filter(isRecord) : [];
   const funnelSettings = isRecord(record.funnelSettings) ? record.funnelSettings : {};
@@ -71,14 +77,20 @@ export function normalizeChatbotConfig(value: unknown): ChatbotPublicConfig {
     ...(avatarStorageId ? { avatarStorageId } : {}),
     avatarUrl: typeof record.avatarUrl === 'string' ? record.avatarUrl : null,
     companyLogoUrl: typeof record.companyLogoUrl === 'string' ? record.companyLogoUrl : null,
-    leadConsent: normalizeChatbotLeadConsent(record.leadConsent)
+    leadConsent: normalizeChatbotLeadConsent(record.leadConsent),
+    ...(Array.isArray(record.quickReplies)
+      ? { quickReplies: record.quickReplies.filter((reply): reply is string => typeof reply === 'string') }
+      : {})
   };
 }
 
 export function normalizeChatbotPublicConfig(value: unknown): ChatbotPublicConfigResponse {
   if (!isRecord(value)) throw invalidResponse('Public chatbot response must be an object.', value);
+  // The wire shape is { key, variant }; the client converts it when it reads the response.
+  const experiment = experimentFromChatbotConfig(value);
   return {
     chatbot: normalizeChatbotConfig(value.chatbot),
+    ...(value.experiment === undefined ? {} : { experiment: experiment ? { key: experiment.experiment, variant: experiment.variant } : null }),
     ...(isRecord(value.trace) ? { trace: value.trace } : {})
   };
 }

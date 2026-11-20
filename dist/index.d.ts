@@ -8,9 +8,16 @@ export * from './public-types';
 export { createChatbotSession } from './session';
 export * from './session-types';
 import { type AcquisitionTrackingSetting } from './internal/acquisition-tracking';
-import { type BaseUrlOptions } from './internal/http';
-import { type ChatbotStreamEvent } from './stream';
+import type { BaseUrlOptions } from './internal/http';
+import { type PageExperimentAssignment } from './internal/page-experiments';
+import type { ChatbotStreamEvent } from './stream';
+import { chatbotOperationIds } from './operation-transport';
+export { chatbotOperationIds, createChatbotOperationTransport, normalizeChatbotOperationPayload } from './operation-transport';
+export { createChatbotChallengeSession, createChatbotChallengeTokenProvider, isChatbotChallengeError } from './challenge';
+export type { ChatbotChallengeTokenProvider } from './challenge';
 export * from './consent';
+export type { ChatbotAdsConsentDecision, ChatbotAdsConsentMode } from './ads-consent';
+export { chatbotAdsConsentMode, chatbotAdsConsentStorageKey, readChatbotAdsConsent, storeChatbotAdsConsent } from './ads-consent';
 export type { ChatbotErrorCode, MoreflowClientErrorCode, MoreflowErrorRecovery } from './errors';
 export { chatbotStreamErrorCodes, isRetryableChatbotError, MoreflowChatbotError } from './errors';
 export { isMoreflowError } from './internal/errors';
@@ -19,13 +26,6 @@ export { chatbotThreadStorageKey, chatbotVisitorStorageKey, createChatbotIdentit
 export type { ChatbotStreamEvent } from './stream';
 export type { AcquisitionTrackingConfig, AcquisitionTrackingSetting, StorageLike };
 export { captureAcquisitionTracking, clearAcquisitionTracking, configureAcquisitionTracking, createMemoryStorage };
-export declare const chatbotOperationIds: {
-    readonly getPublic: 'chatbots.embed.getPublic';
-    readonly messagesList: 'chatbots.embed.messages.list';
-    readonly messagesSend: 'chatbots.embed.messages.send';
-    readonly messageRatingsList: 'chatbots.embed.messageRatings.list';
-    readonly messageRatingsSet: 'chatbots.embed.messageRatings.set';
-};
 export type ChatbotOperationId = (typeof chatbotOperationIds)[keyof typeof chatbotOperationIds];
 export type CanonicalChatbotRecord = Record<string, unknown>;
 declare const chatbotAccountIdBrand: unique symbol;
@@ -49,11 +49,14 @@ declare const chatbotAcquisitionFieldMap: {
     readonly utmCampaign: 'utm_campaign';
     readonly utmTerm: 'utm_term';
     readonly utmContent: 'utm_content';
+    readonly utmCampaignId: 'utm_campaignid';
+    readonly gadCampaignId: 'gad_campaignid';
     readonly gclid: 'gclid';
     readonly gbraid: 'gbraid';
     readonly wbraid: 'wbraid';
     readonly ttclid: 'ttclid';
     readonly ttp: 'ttp';
+    readonly oppref: 'oppref';
     readonly fbclid: 'fbclid';
     readonly fbp: 'fbp';
     readonly fbc: 'fbc';
@@ -66,6 +69,12 @@ export type ChatbotConversationMetadata = ChatbotAcquisitionMetadata & {
     trafficSource?: AcquisitionTracking['utm_source'] | undefined;
     screenWidth?: number | undefined;
     screenHeight?: number | undefined;
+    /**
+     * The visitor's advertising consent. The conversation keeps the latest value a message sent, and
+     * while it is `false` the lead is reported to neither Meta, TikTok nor ChatGPT Ads. Set it with the
+     * client's `adsConsent` option rather than here.
+     */
+    adsConsent?: boolean | undefined;
 };
 export interface ChatbotMetadataCaptureOptions extends TrackingCaptureOptions {
     viewportWidth?: number | undefined;
@@ -77,8 +86,6 @@ export interface ChatbotMetadataCaptureOptions extends TrackingCaptureOptions {
  * snake-case fields to the existing camel-case chatbot operation metadata contract.
  */
 export declare function captureChatbotMetadata(options?: ChatbotMetadataCaptureOptions): ChatbotConversationMetadata;
-/** Normalizes both Moreflow operation envelopes and direct operation payloads. */
-export declare function normalizeChatbotOperationPayload<T = unknown>(payload: unknown): T;
 export type ChatbotSendMessageInput = {
     chatbotId: string;
     visitorId?: string | undefined;
@@ -92,6 +99,12 @@ export type ChatbotSendMessageInput = {
     modelOverride?: string | undefined;
     /** The visitor's answers to `config.chatbot.leadConsent`; required purposes must be granted. */
     consent?: ChatbotLeadConsentAnswer[] | undefined;
+    /**
+     * The experiment variants the visitor saw. Unset, the page's assignments from the tracker's memory
+     * are sent (never stored by the SDK); `[]` sends none. Moreflow stores them with a lead this message
+     * creates only while the account allows it.
+     */
+    experimentVariants?: PageExperimentAssignment[] | undefined;
 };
 export interface ChatbotRequestOptions {
     /** Cancels the request; a stream stops and its response body is released. */
@@ -99,7 +112,7 @@ export interface ChatbotRequestOptions {
 }
 export interface ChatbotOperationTransport {
     call<T = unknown>(operationId: ChatbotOperationId, input: Record<string, unknown>, options?: ChatbotRequestOptions | undefined): Promise<T>;
-    getPublic(chatbotId: string, options?: ChatbotRequestOptions): Promise<ChatbotPublicConfigResponse>;
+    getPublic(chatbotId: string, options?: ChatbotRequestOptions, visitorKey?: string | undefined): Promise<ChatbotPublicConfigResponse>;
     listMessages(input: {
         chatbotId: string;
         visitorId: string;
@@ -130,6 +143,12 @@ export interface ChatbotOperationTransport {
 }
 export interface CreateChatbotOperationTransportOptions extends BaseUrlOptions {
     fetchImpl?: typeof fetch | undefined;
+    /** Called after enforcement is discovered, for every challenged attempt. Return a fresh chatbot_message token. */
+    getChallengeToken?: import('./challenge').ChatbotChallengeTokenProvider | undefined;
+    /** Accessible title for the browser challenge iframe. */
+    challengeTitle?: string | undefined;
+    /** Owned API origin for the challenge when messages use a same-origin/custom proxy. */
+    challengeBaseUrl?: string | undefined;
     /**
      * @deprecated Ignored. The API checks the chatbot's allowed domains against the
      * request's `Origin` (or `Referer`) header, which the browser sets; a value in
@@ -137,7 +156,6 @@ export interface CreateChatbotOperationTransportOptions extends BaseUrlOptions {
      */
     origin?: string | undefined;
 }
-export declare function createChatbotOperationTransport(options?: CreateChatbotOperationTransportOptions): ChatbotOperationTransport;
 export interface ChatbotClient {
     readonly chatbotId: string;
     /** Stored on the first send; changes after `forgetVisitor()`. */
@@ -192,13 +210,25 @@ export interface CreateChatbotClientOptions extends CreateChatbotOperationTransp
     storage?: StorageLike | undefined;
     randomId?: (() => string) | undefined;
     /**
-     * Attaches acquisition metadata (UTM parameters, ad click ids, Meta's `_fbp`/`_fbc`
-     * cookies, referrer, page URL, device) to every send. Off by default because the
-     * capture reads cookies and writes browser storage, which needs consent in the EU.
+     * The visitor's tracking consent. Without consent (the default) every send
+     * carries only the UTM parameters and ad click ids of the current page URL,
+     * with no cookie or storage access. Pass `true`, or a function that returns
+     * `true` once the visitor agreed in your consent banner, to also attach ad
+     * cookies (`_fbp`, `_fbc`, `_ttp`), referrer, page URL and device, kept in
+     * browser storage.
      */
     acquisitionTracking?: AcquisitionTrackingSetting | undefined;
-    /** Capture options or a replacement callback; used only while `acquisitionTracking` is on.
-     * Unset options follow `configureAcquisitionTracking()`. */
+    /** Capture options or a replacement callback; used only with tracking consent.
+     * Unset options follow `configureAcquisitionTracking()`. Without consent only
+     * `location` is read from the options. */
     trackingCapture?: ChatbotMetadataCaptureOptions | (() => ChatbotConversationMetadata | undefined) | undefined;
+    /**
+     * The visitor's advertising consent, for a chatbot whose config has `settings.adsTracking`. When
+     * set, every send carries it as `metadata.adsConsent`: `true`, or a function returning `true` once
+     * the visitor agreed, lets Moreflow report the conversation's lead to Meta, TikTok and ChatGPT Ads;
+     * `false` (or a function returning anything else) keeps it from them. Unset sends no consent signal
+     * and the lead is reported as before. A function is asked on every send.
+     */
+    adsConsent?: AcquisitionTrackingSetting | undefined;
 }
 export declare function createChatbotClient(options: CreateChatbotClientOptions): ChatbotClient;

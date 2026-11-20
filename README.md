@@ -23,7 +23,7 @@ Requests go to `https://api.moreflow.io` unless you pass `baseUrl` (for example 
 Pages without a bundler load the browser build, which exposes the same API as `window.MoreflowChatbots`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@moreflow/chatbots@0.4.1/dist/browser.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@moreflow/chatbots@0.5.0/dist/browser.js"></script>
 <script>
   const chatbot = window.MoreflowChatbots.createChatbotClient({
     chatbotId: '00000000-0000-4000-8000-000000000001'
@@ -49,7 +49,8 @@ You do not need a proxy. Route these requests through your own server only when 
 | --- | --- | --- | --- |
 | `moreflow_chat_visitor_${chatbotId}` | `localStorage` | Until `forgetVisitor()` or the visitor clears site data | The visitor id, so a returning visitor continues the same conversation. Written on the first `send()`/`sendStream()`, not when the client is created. |
 | `moreflow_chat_thread_${chatbotId}_${visitorId}` | `localStorage` | Until `clearThread()`/`reset()`, `forgetVisitor()`, or the visitor clears site data | The current thread id, adopted from the server's reply. |
-| `moreflow:acquisition:v1` | `sessionStorage` (`localStorage` with `persistence: 'local'`) | Until the tab is closed (or `ttlDays`, with `localStorage`) | Acquisition values, written only with `acquisitionTracking` enabled (see below). |
+| `moreflow:acquisition:v1` | `localStorage` (`sessionStorage` with `persistence: 'session'`) | Each touch for 90 days (`ttlDays`), until `clearAcquisitionTracking()`, or until the visitor clears site data | Acquisition values, written only with `acquisitionTracking` consent (see below). |
+| `moreflow_chat_ads_consent:${chatbotId}` | `localStorage` | Until the visitor clears site data | The visitor's answer (`granted` or `denied`) to the chat's own advertising consent prompt, written only by `storeChatbotAdsConsent()` (see below). |
 
 Pass `storage` to use your own `StorageLike` for the visitor and thread ids. When `localStorage` is blocked, they live in memory for the page. The package sets no cookies.
 
@@ -57,7 +58,7 @@ Pass `storage` to use your own `StorageLike` for the visitor and thread ids. Whe
 
 ## Acquisition tracking and consent
 
-The client attaches no acquisition metadata unless you allow it:
+`acquisitionTracking` is the visitor's tracking consent:
 
 ```ts
 const chatbot = createChatbotClient({
@@ -66,9 +67,44 @@ const chatbot = createChatbotClient({
 });
 ```
 
-With `acquisitionTracking: true`, or a function that returns `true`, every send carries the UTM parameters and ad click ids from the page URL, Meta's `_fbp`/`_fbc` cookies, the referrer, the page URL, and the device type, captured with `@moreflow/tracking`. Reading those cookies and writing `sessionStorage` needs the visitor's consent in the EU (§ 25 TDDDG in Germany), so tie the option to your consent banner. A function is asked on every send. Metadata you pass as `send({ metadata })` is always sent. The same option exists on `@moreflow/forms` and `@moreflow/meetings`.
+Without consent (the default, `false`, or a function returning `false`) every send carries only the UTM parameters (`utm_*`), Google campaign parameters (`gad_campaignid`, `gad_source`), and ad click ids (`gclid`, `gbraid`, `wbraid`, `fbclid`, `ttclid`, `oppref`) of the current page URL. It reads no cookies, no referrer, user agent or screen size, writes no browser storage, and keeps nothing for a later page. `utm_campaignid` and `gad_campaignid` arrive as `utmCampaignId` and `gadCampaignId`; `gad_source` has no chatbot metadata field and is left out, and a send without any carries no metadata.
 
-One `configureAcquisitionTracking({ persistence, model, ttlDays })` call at startup (re-exported from `@moreflow/tracking`) applies to these captures and to the ones your own page makes, so a site that captures on every route change and enables `acquisitionTracking: true` here sends the same landing values without a wrapper. Pass `trackingCapture: { model: 'last-touch', persistence: 'local' }` to override capture options for this client, or `trackingCapture: () => myChatbotMetadata` to supply your own conversation metadata at send time. Both forms run only while `acquisitionTracking` permits capture.
+With `acquisitionTracking: true`, or a function that returns `true`, every send also carries Meta's `_fbp`/`_fbc` and TikTok's `_ttp` cookies, the referrer, the page URL, and the device type, captured with `@moreflow/tracking`. The first and last touch are kept in `localStorage` for 90 days, so a conversation in a later visit still carries an earlier ad click id. Reading those cookies and writing that storage needs the visitor's consent in the EU (§ 25 TDDDG in Germany), so tie the option to your consent banner. A function is asked on every send. Metadata you pass as `send({ metadata })` is always sent. The same option exists on `@moreflow/forms` and `@moreflow/meetings`.
+
+One `configureAcquisitionTracking({ persistence, model, ttlDays })` call at startup (re-exported from `@moreflow/tracking`) applies to these captures and to the ones your own page makes, so a site that captures on every route change and enables `acquisitionTracking: true` here sends the same landing values without a wrapper. Pass `trackingCapture: { model: 'last-touch', persistence: 'local' }` to override capture options for this client, or `trackingCapture: () => myChatbotMetadata` to supply your own conversation metadata at send time. Both forms run only with consent; without it only a `location` in the options is read.
+
+### Advertising consent
+
+When `config.chatbot.settings.adsTracking` is `true`, Moreflow reports the chatbot's leads to Meta, TikTok or ChatGPT Ads (server-side conversions, plus the browser pixels in `metaPixelId`, `tiktokPixelId` and `openAiPixelId`). Ask the visitor for advertising consent before you load any of those pixels, and pass the answer as `adsConsent`:
+
+```ts
+const chatbot = createChatbotClient({
+  chatbotId: '00000000-0000-4000-8000-000000000001',
+  adsConsent: () => consentManager.hasAdvertisingConsent()
+});
+```
+
+Every send then carries `metadata.adsConsent` (`true` only for `true` or a function returning `true`). The conversation keeps the latest value, and while it is `false` its lead is reported to none of those platforms. Without the option a send carries no consent signal and the lead is reported as before. The hosted chat page asks for this consent itself, and the visitor can chat only after answering.
+
+The script embed (`chatbot-sdk.js`, the `mfChat('init', …)` snippet from the chatbot's share settings) follows `config.chatbot.embedSettings.adsConsentSource`, which the account picks per chatbot:
+
+- `widget_prompt` (the default): when `settings.adsTracking` is `true`, the widget shows its own Ablehnen/Zulassen (Decline/Allow) prompt, and the visitor can chat only after answering. The answer is kept per chatbot in the browser; only Allow lets the widget read ad cookies.
+- `website_consent`: the widget takes the consent from the site's consent banner through the snippet's `acquisitionTracking` hook (`hasTrackingConsent` in the generated code). Without a hook, or while it returns anything but `true`, the widget sends `adsConsent: false`.
+
+A custom client follows the same setting; a server that does not send it means `widget_prompt`. `chatbotAdsConsentMode(config)` applies these rules to a loaded config, and `readChatbotAdsConsent(chatbotId)`/`storeChatbotAdsConsent(chatbotId, 'granted' | 'denied')` keep the answer to your own prompt in `localStorage` under `moreflow_chat_ads_consent:{chatbotId}`, the key the hosted chat and the script embed use, so a visitor is asked once per chatbot:
+
+```ts
+const config = await chatbot.loadConfig();
+const mode = chatbotAdsConsentMode(config); // 'widget_prompt' | 'website_consent' | 'none'
+let answer = readChatbotAdsConsent(config.id); // 'granted' | 'denied' | null; ask while null in 'widget_prompt'
+const client = createChatbotClient({
+  chatbotId: config.id,
+  adsConsent: () =>
+    mode === 'widget_prompt' ? answer === 'granted' : mode === 'website_consent' && consentManager.hasAdvertisingConsent()
+});
+```
+
+The custom chat code the embed builder generates for a chatbot works this way.
 
 ## Sending
 
@@ -134,7 +170,7 @@ Bug reports and feature requests are welcome in [this repository's issue tracker
 
 The session prefers streaming and falls back to `send()` for unavailable or interrupted streams. Both requests and manual retries reuse one `clientMessageId`; the server deduplicates by chatbot, visitor and message id, including when the first response carrying the thread id was lost. Low-level callers may pass `clientMessageId` explicitly and must retain it when retrying; a new id is generated when omitted. Do not reuse an id for different text. `loadConfig()` returns the normalized config directly; `getConfig()` retains its existing response envelope.
 
-`describeChatbotError(error, { locale: 'de' | 'en', formality: 'formal' | 'informal' })` returns safe localized `message`, `code`, `retryable`, `retryAfterSeconds` and the original `cause`. HTTP `Retry-After` seconds and dates are respected in `retryAfterSeconds`; wait that long before offering another attempt.
+`describeChatbotError(error, { locale: 'de' | 'en', formality: 'formal' | 'informal' })` returns safe localized `message` (German "du" unless `formality` is `'formal'`; a session passes the chatbot's `settings.addressForm` when you set no `formality`), `code`, `retryable`, `retryAfterSeconds` and the original `cause`. HTTP `Retry-After` seconds and dates are respected in `retryAfterSeconds`; wait that long before offering another attempt.
 
 Completed sends replay for 30 days through moreflow's shared operation idempotency store. `IDEMPOTENCY_IN_PROGRESS` means the original send is still running; the session surfaces a retryable, localized error with `retryAfterSeconds` (from HTTP or SSE details). Wait that delay before `retry(message.id)`. Known transient failures before a reply exists release their claim and reuse the persisted visitor message on retry. Provider failures that already produced a fallback reply replay that reply. A crashed request expires after the shared 10-minute pending lease into `INVALID_STATE`, rather than processing forever. If a reply was persisted before a later failure, `INVALID_STATE` points to thread history. The client retains a matching chatbot/visitor recovery pointer over JSON or SSE, so reloading can recover a first-send reply too; reconcile any remaining lead processing before sending again. These uncertain outcomes are never automatically repeated.
 
@@ -214,3 +250,30 @@ export function ChatWidget({ chatbotId }: { chatbotId: string }) {
   </aside>;
 }
 ```
+
+### Bot challenges
+
+Browser sends and streams start without a token and make no challenge request while
+enforcement is disabled. On the first challenge refusal, they retry once and remember
+that chatbot requires a challenge for this page session (across SDK clients and hosted
+chat remounts). Every challenged attempt obtains a fresh `chatbot_message` token in a small iframe
+served by the configured Moreflow API origin. The conversation stays in the customer
+page; customer domains do not belong in `TURNSTILE_ALLOWED_HOSTNAMES`. Allow the API
+origin in the customer page's `frame-src` CSP. For same-origin/custom message
+proxies the challenge defaults to `https://api.moreflow.io`; set
+`challengeBaseUrl: 'https://dev-api.moreflow.io'` when the proxy targets Development. The API's challenge iframe uses
+`VITE_TURNSTILE_SITE_KEY` only when both operation challenge flags are enabled, and
+reports disabled without loading Cloudflare otherwise. Its API hostname must be
+authorized on the Cloudflare widget and in the server's exact hostname allowlist.
+
+Headless/custom integrations can pass `getChallengeToken: async ({ chatbotId, action, signal }) => token`
+to `createChatbotClient` or `createChatbotOperationTransport`. Return a newly solved
+token for **each invocation**, or `undefined` when the server reports disabled.
+Tokens go only in `x-captcha-response`, never business input. Direct HTTP integrations
+using either the generic operation route, `/messages`, or `/messages/stream` must
+follow the same rule, including a fresh token on manual retries.
+
+The SDK re-challenges once on missing, invalid/expired/replayed, action-mismatched
+or hostname-rejected tokens, including terminal SSE challenge errors. Repeated
+rejection is surfaced to the caller. It does not resend after an ambiguous network
+or generation failure; preserve `clientMessageId` for a deliberate retry.

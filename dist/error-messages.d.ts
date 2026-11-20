@@ -1,7 +1,7 @@
 export interface DescribeChatbotErrorOptions {
     /** Defaults to German. */
     locale?: 'de' | 'en' | undefined;
-    /** German uses "Sie" by default, or "du" when informal. */
+    /** German uses "du" by default, or "Sie" when formal. */
     formality?: 'formal' | 'informal' | undefined;
 }
 export interface ChatbotErrorDescription {

@@ -23,6 +23,11 @@ const everyCode: Record<ChatbotErrorCode, true> = {
   IDEMPOTENCY_IN_PROGRESS: true,
   IDEMPOTENCY_CONFLICT: true,
   INVALID_STATE: true,
+  TURNSTILE_TOKEN_REQUIRED: true,
+  TURNSTILE_TOKEN_INVALID: true,
+  TURNSTILE_ACTION_MISMATCH: true,
+  TURNSTILE_HOSTNAME_NOT_ALLOWED: true,
+  TURNSTILE_VERIFICATION_UNAVAILABLE: true,
   INTERNAL_ERROR: true
 };
 
@@ -45,20 +50,22 @@ describe('describeChatbotError', () => {
     }
   });
 
-  it('defaults to German Sie and switches to du for informal German', () => {
+  it('defaults to German du and switches to Sie for formal German', () => {
     const error = new MoreflowChatbotError({ message: 'Private detail.', code: 'NETWORK_ERROR' });
     expect(describeChatbotError(error).message).toBe(
-      'Die Verbindung ist fehlgeschlagen. Bitte versuchen Sie es erneut.'
-    );
-    expect(describeChatbotError(error, { locale: 'de', formality: 'informal' }).message).toBe(
       'Die Verbindung ist fehlgeschlagen. Bitte versuche es erneut.'
     );
-    expect(describeChatbotError(error, { locale: 'en', formality: 'informal' }).message).toBe(
+    expect(describeChatbotError(error, { locale: 'de', formality: 'formal' }).message).toBe(
+      'Die Verbindung ist fehlgeschlagen. Bitte versuchen Sie es erneut.'
+    );
+    expect(describeChatbotError(error, { locale: 'en', formality: 'formal' }).message).toBe(
       'The connection failed. Please try again.'
     );
     for (const code of Object.keys(everyCode)) {
       const error = new MoreflowChatbotError({ message: 'Private detail.', code });
-      expect(describeChatbotError(error, { formality: 'informal' }).message, code).not.toMatch(/\bSie\b|\bIhre\b/u);
+      for (const options of [{}, { formality: 'informal' as const }]) {
+        expect(describeChatbotError(error, options).message, code).not.toMatch(/\b(?:Sie|Ihr\w*|Ihnen)\b/u);
+      }
     }
   });
 

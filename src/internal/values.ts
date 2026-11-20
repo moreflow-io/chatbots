@@ -16,20 +16,21 @@ function uuidFromRandomBytes(bytes: Uint8Array): string {
 }
 
 /**
- * A random id for visitor ids and idempotency keys: a v4 UUID from Web Crypto,
- * or a non-cryptographic `mf_` id in restricted contexts without it, so an
- * embed keeps working instead of failing.
+ * A random id for visitor ids and idempotency keys: a v4 UUID from Web Crypto.
+ * Fails closed when Web Crypto is unavailable: a visitor id is the read credential
+ * for its conversation, so it must never come from a non-cryptographic source.
  */
 export function createRandomId(): string {
-  try {
-    const cryptoApi = globalThis.crypto;
-    const generated = cryptoApi?.randomUUID?.();
-    if (generated) return generated;
-    if (cryptoApi?.getRandomValues) {
-      return uuidFromRandomBytes(cryptoApi.getRandomValues(new Uint8Array(16)));
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === 'function') {
+    try {
+      return cryptoApi.randomUUID();
+    } catch {
+      // randomUUID can be restricted while getRandomValues still works; fall through.
     }
-  } catch {
-    // Fall through when Web Crypto is unavailable or access is restricted.
   }
-  return `mf_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  if (typeof cryptoApi?.getRandomValues === 'function') {
+    return uuidFromRandomBytes(cryptoApi.getRandomValues(new Uint8Array(16)));
+  }
+  throw new Error('Web Crypto is unavailable, so a secure random id cannot be generated.');
 }

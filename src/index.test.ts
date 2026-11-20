@@ -143,7 +143,7 @@ describe('@moreflow/chatbots', () => {
       support_settings: { agent_handoff: true }
     });
 
-    expect(config.settings).toEqual({ welcomeMessage: 'Canonical greeting' });
+    expect(config.settings).toEqual({ welcomeMessage: 'Canonical greeting', addressForm: 'formal' });
     expect(config.embedSettings).toEqual({ primaryColor: '#f97316' });
     expect(config.leadFields).toEqual([{ fieldKey: 'email_address' }]);
     expect(config.funnelSettings).toEqual({ targetStage: 'lead' });
@@ -345,8 +345,8 @@ describe('@moreflow/chatbots', () => {
     });
 
     expect(metadata).toMatchObject({
-      pageUrl:
-        'https://customer.example/pricing?utm_source=google&utm_campaign=launch&gclid=click-1&utm_campaignid=campaign-1&gad_campaignid=campaign-2&gad_source=1',
+      // @moreflow/tracking stores the landing URL sanitized: only UTM parameters and click ids survive (moreflow-2lkcp).
+      pageUrl: 'https://customer.example/pricing?utm_source=google&utm_campaign=launch&gclid=click-1',
       referrer: 'https://search.example/',
       userAgent: 'Vitest browser',
       trafficSource: 'google',
@@ -483,6 +483,33 @@ describe('@moreflow/chatbots', () => {
 
     expect(bodies[0]?.metadata).toMatchObject({ utmSource: 'google' });
     expect(storage.getItem('site:acquisition')).toContain('google');
+  });
+
+  it('sends the adsConsent option as metadata on every send and nothing without it', async () => {
+    const bodies: Array<Record<string, unknown>> = [];
+    let granted = false;
+    const fetchImpl = async (_input: unknown, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return operationResponse({ threadId: 'thread-1' });
+    };
+    const client = createChatbotClient({
+      chatbotId,
+      storage: createMemoryStorage(),
+      randomId: () => 'visitor-1',
+      trackingCapture: { location: { href: 'https://example.test/?utm_source=google' } },
+      adsConsent: () => granted,
+      fetchImpl
+    });
+
+    await client.send({ message: 'Hello' });
+    granted = true;
+    await client.send({ message: 'Again', metadata: { utmSource: 'manual' } });
+    const unset = createChatbotClient({ chatbotId, storage: createMemoryStorage(), randomId: () => 'visitor-2', fetchImpl });
+    await unset.send({ message: 'Hello' });
+
+    expect(bodies[0]?.metadata).toEqual({ utmSource: 'google', trafficSource: 'google', adsConsent: false });
+    expect(bodies[1]?.metadata).toEqual({ utmSource: 'manual', adsConsent: true });
+    expect(bodies[2]).not.toHaveProperty('metadata');
   });
 
   it('adopts the thread id from the public SSE complete event', async () => {

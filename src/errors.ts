@@ -39,6 +39,11 @@ export type ChatbotErrorCode =
   | 'IDEMPOTENCY_CONFLICT'
   /** A prior send's outcome cannot be confirmed; inspect history before sending again. */
   | 'INVALID_STATE'
+  | 'TURNSTILE_TOKEN_REQUIRED'
+  | 'TURNSTILE_TOKEN_INVALID'
+  | 'TURNSTILE_ACTION_MISMATCH'
+  | 'TURNSTILE_HOSTNAME_NOT_ALLOWED'
+  | 'TURNSTILE_VERIFICATION_UNAVAILABLE'
   | 'INTERNAL_ERROR';
 
 /** The error every `@moreflow/chatbots` helper throws. */
