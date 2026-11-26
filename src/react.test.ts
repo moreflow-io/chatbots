@@ -26,7 +26,7 @@ const config = (leadConsent: ChatbotLeadConsentRequest[] = []) => ({
 const json = (body: unknown) => new Response(JSON.stringify({ success: true, data: body }), {
   headers: { 'content-type': 'application/json' }
 });
-const operationUrl = (operation: string) => `/v1/operations/${operation}`;
+const operationUrl = (operation: string) => `/operations/${operation}`;
 const complete = () => new Response(`event: message.complete\ndata: ${JSON.stringify({
   threadId: 'thread-1', assistantMessageId: 'reply-1', response: 'Hello!'
 })}\n\n`, { headers: { 'content-type': 'text/event-stream' } });
@@ -96,7 +96,7 @@ describe('useChatbot', () => {
       expect.objectContaining({ text: 'Hello', pending: false, failed: false }),
       expect.objectContaining({ text: 'Hello!', role: 'assistant' })
     ]));
-    expect(fetchImpl).toHaveBeenLastCalledWith(`/v1/chatbots/${chatbotId}/messages/stream`, expect.objectContaining({
+    expect(fetchImpl).toHaveBeenLastCalledWith(`/chatbots/${chatbotId}/messages/stream`, expect.objectContaining({
       body: expect.stringContaining('"consent":[{"purpose":"marketing_email","granted":true,"wordingVersion":"wording-1"}]')
     }));
     act(() => session.reset());

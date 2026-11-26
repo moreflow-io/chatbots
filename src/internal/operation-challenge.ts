@@ -56,7 +56,7 @@ export function createOperationChallengeSession(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 10_000);
     try {
-      const response = await dependencies.fetchImpl(`${baseUrl}/v1/security/operation-challenge`, {
+      const response = await dependencies.fetchImpl(`${baseUrl}/security/operation-challenge`, {
         method: 'GET',
         mode: 'cors',
         credentials: 'omit',
@@ -141,7 +141,7 @@ export function createOperationChallengeSession(
       )
         throw dependencies.unavailable();
       token = await solveChallengeFrame(
-        `${resolveChallengeBaseUrl(options)}/v1/security/operation-challenge/frame?operationId=${encodeURIComponent(operationId)}`,
+        `${resolveChallengeBaseUrl(options)}/security/operation-challenge/frame?operationId=${encodeURIComponent(operationId)}`,
         { title: options.challengeTitle, signal, ...dependencies }
       );
       // Only the authenticated frame protocol can report that enforcement was switched off.

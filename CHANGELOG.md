@@ -4,6 +4,12 @@ All notable changes to `@moreflow/chatbots` are documented in this file.
 
 ## Unreleased
 
+## 0.5.1
+
+- The client calls unversioned API paths (`/operations/...`, `/chatbots/{chatbotId}/...`, `/security/operation-challenge`) instead of `/v1/...` (moreflow-o5t0ga.33). The server serves both until the `/v1` prefix is retired; embeds pinned to an older version stop working then, so update before.
+
+- Fix: the script-tag bundle includes the `@moreflow/tracking` fix that keeps acquisition values stored by an earlier version (a record without a capture time, or one kept in `sessionStorage` before 0.3.0), so a conversation after the upgrade still carries the visitor's earlier campaign and ad click ids. The npm module receives the fix through its `@moreflow/tracking` range.
+
 ## 0.5.0
 
 - Add `chatbotAdsConsentMode(config)` (`'widget_prompt' | 'website_consent' | 'none'`), which tells a custom chat how to obtain the visitor's advertising consent for a loaded config, and `readChatbotAdsConsent`/`storeChatbotAdsConsent`/`chatbotAdsConsentStorageKey`, which keep the visitor's answer to the chat's own prompt per chatbot in `localStorage` (`moreflow_chat_ads_consent:{chatbotId}`), shared with the hosted chat and the script embed. The custom chat code from the embed builder uses them.

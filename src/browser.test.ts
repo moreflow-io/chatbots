@@ -86,8 +86,8 @@ describe('@moreflow/chatbots browser build', () => {
     expect(events).toEqual(['message.delta', 'message.complete']);
     expect(client.getThreadId()).toBe('thread-1');
     expect(urls).toEqual([
-      'https://api.moreflow.io/v1/operations/chatbots.embed.getPublic',
-      'https://api.moreflow.io/v1/chatbots/bot-1/messages/stream'
+      'https://api.moreflow.io/operations/chatbots.embed.getPublic',
+      'https://api.moreflow.io/chatbots/bot-1/messages/stream'
     ]);
   });
 

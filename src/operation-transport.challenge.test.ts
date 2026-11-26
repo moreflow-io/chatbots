@@ -80,7 +80,7 @@ describe('chatbot fresh challenge transport', () => {
       'message.complete'
     ]);
     expect(fetchImpl.mock.calls.map(([url]) => url)).toEqual(
-      Array(3).fill('https://api.moreflow.io/v1/chatbots/bot/messages/stream')
+      Array(3).fill('https://api.moreflow.io/chatbots/bot/messages/stream')
     );
     expect(
       fetchImpl.mock.calls.map(([, init]) => new Headers(init.headers).get('x-captcha-response'))

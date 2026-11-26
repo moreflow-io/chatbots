@@ -200,11 +200,11 @@ describe('@moreflow/chatbots', () => {
     });
 
     expect(requests.map((request) => request.url)).toEqual([
-      'https://api.moreflow.test/v1/operations/chatbots.embed.getPublic',
-      'https://api.moreflow.test/v1/operations/chatbots.embed.messages.list',
-      'https://api.moreflow.test/v1/operations/chatbots.embed.messages.send',
-      'https://api.moreflow.test/v1/operations/chatbots.embed.messageRatings.list',
-      'https://api.moreflow.test/v1/operations/chatbots.embed.messageRatings.set'
+      'https://api.moreflow.test/operations/chatbots.embed.getPublic',
+      'https://api.moreflow.test/operations/chatbots.embed.messages.list',
+      'https://api.moreflow.test/operations/chatbots.embed.messages.send',
+      'https://api.moreflow.test/operations/chatbots.embed.messageRatings.list',
+      'https://api.moreflow.test/operations/chatbots.embed.messageRatings.set'
     ]);
     // The API reads the embedding origin from the Origin/Referer header, never the body.
     expect(requests[0]?.body).toEqual({ chatbotId });
@@ -686,6 +686,6 @@ describe('@moreflow/chatbots family conventions', () => {
       details: { required: [] },
       recovery: { operation: 'chatbots.embed.messages.send', args: { consent: [] } }
     });
-    expect(urls).toEqual(['https://api.moreflow.io/v1/operations/chatbots.embed.messages.send']);
+    expect(urls).toEqual(['https://api.moreflow.io/operations/chatbots.embed.messages.send']);
   });
 });

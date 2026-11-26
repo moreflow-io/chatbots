@@ -24,7 +24,7 @@ export function createChatbotChallengeTokenProvider(
 ): ChatbotChallengeTokenProvider {
   return ({ chatbotId, signal }) => {
     const baseUrl = resolveBaseUrl(options);
-    const path = `${baseUrl}/v1/chatbots/${encodeURIComponent(chatbotId)}?challenge=1`;
+    const path = `${baseUrl}/chatbots/${encodeURIComponent(chatbotId)}?challenge=1`;
     return solveChallengeFrame(path, {
       title: options.title,
       signal,

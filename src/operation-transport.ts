@@ -133,7 +133,7 @@ export function createChatbotOperationTransport(
       if (signal?.aborted) throw abortedError(signal);
       let response: Response;
       try {
-        response = await fetchImpl(`${baseUrl}/v1/operations/${operationId}`, {
+        response = await fetchImpl(`${baseUrl}/operations/${operationId}`, {
           method: 'POST',
           mode: 'cors',
           credentials: 'omit',
@@ -201,7 +201,7 @@ export function createChatbotOperationTransport(
         let response: Response;
         try {
           response = await fetchImpl(
-            `${baseUrl}/v1/chatbots/${encodeURIComponent(input.chatbotId)}/messages/stream`,
+            `${baseUrl}/chatbots/${encodeURIComponent(input.chatbotId)}/messages/stream`,
             {
               method: 'POST',
               mode: 'cors',

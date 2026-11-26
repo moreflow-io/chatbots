@@ -55,7 +55,7 @@ describe('owned-host chatbot challenge frame', () => {
     });
     const promise = getToken({ chatbotId: 'bot', action: 'chatbot_message' });
     const first = frame();
-    expect(first.src).toContain('https://dev-api.moreflow.io/v1/chatbots/bot?challenge=1');
+    expect(first.src).toContain('https://dev-api.moreflow.io/chatbots/bot?challenge=1');
     expect(first.title).toBe('Sicherheitsprüfung');
     expect(first.style.pointerEvents).toBe('none');
     reply('token', { token: 'forged' }, window);

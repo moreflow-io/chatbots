@@ -3,7 +3,7 @@
 Headless browser protocol helpers for native moreflow chatbot clients. The framework-neutral core contains no UI or styles; an optional React entry subscribes to the headless session.
 
 The other public SDKs, the agent plugins, and the HTTP API are listed in the
-[moreflow SDK overview](https://api.moreflow.io/v1/operations/docs/guide#sdks).
+[moreflow SDK overview](https://docs.moreflow.io/#sdks).
 
 ```ts
 import { createChatbotClient } from '@moreflow/chatbots';
@@ -23,7 +23,7 @@ Requests go to `https://api.moreflow.io` unless you pass `baseUrl` (for example 
 Pages without a bundler load the browser build, which exposes the same API as `window.MoreflowChatbots`:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/@moreflow/chatbots@0.5.0/dist/browser.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@moreflow/chatbots@0.5.1/dist/browser.js"></script>
 <script>
   const chatbot = window.MoreflowChatbots.createChatbotClient({
     chatbotId: '00000000-0000-4000-8000-000000000001'
@@ -39,7 +39,7 @@ The chatbot API needs no API token, and the client sends no cookies (`credential
 
 The chatbot must be active. Under **Allowed Domains** in the chatbot's settings, add the domains that may embed it (`example.com` also covers `www.example.com`). While the list is empty, any site can embed the chatbot; once it has an entry, the server compares the browser's `Origin` header (or `Referer`) with it on every call. A request without either header, such as one from your own server-side proxy, is not checked against the list. A domain that is not on the list, or a chatbot that is not active, gets `NOT_FOUND`, the same answer as an unknown chatbot id.
 
-The browser calls `https://api.moreflow.io` directly. `getConfig()`, `send()`, `listMessages()` and the rating calls go to `/v1/operations/chatbots.embed.*`, and `sendStream()` posts to `/v1/chatbots/{chatbotId}/messages/stream`; both answer CORS requests from any site, including the browser's preflight, and the Allowed Domains check then runs on the real request. Use [`@moreflow/api`](https://github.com/moreflow-io/api#readme) only from server code; it is not for the browser.
+The browser calls `https://api.moreflow.io` directly. `getConfig()`, `send()`, `listMessages()` and the rating calls go to `/operations/chatbots.embed.*`, and `sendStream()` posts to `/chatbots/{chatbotId}/messages/stream`; both answer CORS requests from any site, including the browser's preflight, and the Allowed Domains check then runs on the real request. Use [`@moreflow/api`](https://github.com/moreflow-io/api#readme) only from server code; it is not for the browser.
 
 You do not need a proxy. Route these requests through your own server only when your Content Security Policy cannot list `https://api.moreflow.io`, and know what it costs. Preserving per-visitor rate limiting would require forwarding the real client IP through infrastructure moreflow trusts. The public API currently rejects caller-supplied `CF-Connecting-IP` at Cloudflare and does not trust `X-Forwarded-For`, so all visitors share one rate limit at your server's IP. Forward the browser's `Origin` header unchanged, or the Allowed Domains check no longer protects anything: the server skips it for a request without `Origin` or `Referer`, and a proxy that sets a fixed `Origin` lets anyone who reaches it through. Never add an API token in the proxy; the public endpoints do not need one. Pass `baseUrl: ''` (or your proxy's URL) to send the requests there.
 

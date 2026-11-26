@@ -1,6 +1,6 @@
 {
   "name": "@moreflow/chatbots",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Headless public-chatbot helpers, a chatbot session store and an optional React hook.",
   "license": "MIT",
   "repository": {
